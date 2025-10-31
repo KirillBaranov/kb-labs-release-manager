@@ -1,5 +1,25 @@
 {
   "sync": {
     "enabled": true
+  },
+  "release": {
+    "registry": "https://registry.npmjs.org",
+    "strategy": "semver",
+    "bump": "auto",
+    "strict": true,
+    "verify": ["audit", "build", "tests"],
+    "publish": {
+      "npm": true,
+      "github": false
+    },
+    "rollback": {
+      "enabled": true,
+      "maxHistory": 5
+    },
+    "output": {
+      "json": true,
+      "md": true,
+      "text": true
+    }
   }
 }

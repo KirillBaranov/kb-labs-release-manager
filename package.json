@@ -1,8 +1,8 @@
 {
-  "name": "@kb-labs/product-template",
+  "name": "@kb-labs/release-manager",
   "version": "0.1.0",
   "private": true,
-  "description": "KB Labs product template — zero-config starter powered by @kb-labs/devkit.",
+  "description": "KB Labs Release Manager — unified release orchestration for monorepo packages. Combines audit, devlink, mind checks with version management and publishing.",
   "type": "module",
   "author": {
     "name": "Kirill Baranov",
@@ -11,12 +11,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kirill-baranov/kb-labs-product-template.git"
+    "url": "https://github.com/kirill-baranov/kb-labs-release-manager.git"
   },
   "bugs": {
-    "url": "https://github.com/kirill-baranov/kb-labs-product-template/issues"
+    "url": "https://github.com/kirill-baranov/kb-labs-release-manager/issues"
   },
-  "homepage": "https://github.com/kirill-baranov/kb-labs-product-template#readme",
+  "homepage": "https://github.com/kirill-baranov/kb-labs-release-manager#readme",
   "workspaces": [
     "apps/*",
     "packages/*"

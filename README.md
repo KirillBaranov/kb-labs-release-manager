@@ -1,106 +1,203 @@
-# KB Labs — Product Template
+# KB Labs Release Manager
 
-This is the **baseline template** for products under the **@kb-labs** namespace.  
-It is designed for multi-package repositories using pnpm workspaces.
+**@kb-labs/release-manager** — unified release orchestration for monorepo packages.
 
-**Goals:** Fast bootstrap, unified quality rules, simple publishing, and reusable core.
+Combines audit, devlink, mind checks with version management and publishing. Guarantees that releases only happen when all quality gates pass, automatically publishes packages, and maintains full release traceability.
 
-## 📁 Repository Structure
+> "If Audit ensures quality — Release Manager ensures trust."
 
-```
-apps/
-├── demo/                    # Example app / playground
-packages/
-├── package-name/            # Example package (lib/cli/adapter)
-fixtures/                    # Fixtures for snapshot/integration testing
-docs/
-└── adr/                     # Architecture Decision Records (ADRs)
-```
+---
 
-## 🚀 Quick Start
+## Overview
+
+Release Manager is the final step in the KB Labs engineering cycle: TTM (Time to Market). It:
+
+- ✅ Checks code quality (audit, build, tests)
+- ✅ Validates dependencies (devlink, mind)
+- ✅ Computes next version (semver strategy)
+- ✅ Generates changelog
+- ✅ Publishes to npm registry
+- ✅ Creates rollback snapshots
+- ✅ Outputs machine-readable reports
+
+---
+
+## Architecture
+
+### Packages
+
+| Package | Purpose |
+|---------|---------|
+| **@kb-labs/release-core** | Orchestration, planning, versioning, publishing |
+| **@kb-labs/release-checks** | Integrations with audit, devlink, mind, tests |
+| **@kb-labs/release-cli** | CLI commands (plan, run, rollback, report) |
+
+---
+
+## Usage
 
 ### Installation
 
 ```bash
-pnpm install
+pnpm add -D @kb-labs/release-manager
 ```
 
-### Development
+### Configuration
+
+Add to `kb-labs.config.json`:
+
+```json
+{
+  "release": {
+    "registry": "https://registry.npmjs.org",
+    "strategy": "semver",
+    "bump": "auto",
+    "strict": true,
+    "verify": ["audit", "build", "tests"],
+    "publish": {
+      "npm": true,
+      "github": false
+    },
+    "rollback": {
+      "enabled": true,
+      "maxHistory": 5
+    }
+  }
+}
+```
+
+### Commands
+
+#### Plan Release
 
 ```bash
-pnpm dev         # Parallel dev mode for selected packages/apps
-pnpm build       # Build all packages
-pnpm test        # Run tests
-pnpm lint        # Lint code
+kb release plan --scope packages/* --bump auto
 ```
 
-### Creating a New Package
+Analyzes changes and prepares release plan without publishing.
+
+#### Execute Release
 
 ```bash
-# Using the CLI tool (recommended)
-pnpm dlx @kb-labs/create-pkg my-new-pkg
-
-# Or manually copy and modify
-cp -r packages/package-name packages/<new-package-name>
-# Then update metadata and imports
+kb release run --dry-run
+kb release run --strict
+kb release run --json
 ```
 
-## 🛠️ Available Scripts
+Runs full release process: plan → check → publish → report.
 
-| Script             | Description                                |
-| ------------------ | ------------------------------------------ |
-| `pnpm dev`         | Start development mode for all packages    |
-| `pnpm build`       | Build all packages                         |
-| `pnpm build:clean` | Clean and build all packages               |
-| `pnpm test`        | Run all tests                              |
-| `pnpm test:watch`  | Run tests in watch mode                    |
-| `pnpm lint`        | Lint all code                              |
-| `pnpm lint:fix`    | Fix linting issues                         |
-| `pnpm type-check`  | TypeScript type checking                   |
-| `pnpm check`       | Run lint, type-check, and tests            |
-| `pnpm ci`          | Full CI pipeline (clean, build, check)     |
-| `pnpm clean`       | Clean build artifacts                      |
-| `pnpm clean:all`   | Clean all node_modules and build artifacts |
+#### Rollback
 
-### 🔧 DevKit Commands
+```bash
+kb release rollback
+```
 
-| Script              | Description                                |
-| ------------------- | ------------------------------------------ |
-| `pnpm devkit:sync`  | Sync DevKit configurations to workspace   |
-| `pnpm devkit:check` | Check if DevKit sync is needed             |
-| `pnpm devkit:force` | Force DevKit sync (overwrite existing)     |
-| `pnpm devkit:help`  | Show DevKit sync help                      |
+Restores previous state from backup snapshot.
 
-## 🔧 DevKit Integration
+#### Show Report
 
-This template uses `@kb-labs/devkit` for shared tooling and configurations. DevKit provides:
+```bash
+kb release report
+kb release report --json
+```
 
-- **Unified Configurations:** ESLint, Prettier, TypeScript, Vitest, and TSUP configs
-- **Automatic Sync:** Keeps workspace configs in sync with latest DevKit versions
-- **Zero Maintenance:** No need to manually update config files
+Displays last release execution report.
 
-### DevKit Commands Usage
+---
 
-- **`pnpm devkit:sync`** - Syncs DevKit configurations to your workspace (runs automatically on `pnpm install`)
-- **`pnpm devkit:check`** - Checks if your workspace configs are up-to-date with DevKit
-- **`pnpm devkit:force`** - Forces sync even if local files exist (overwrites local changes)
-- **`pnpm devkit:help`** - Shows detailed help and available options
+## Features
 
-For more details, see [ADR-0005: Use DevKit for Shared Tooling](docs/adr/0005-use-devkit-for-shared-tooling.md).
+### ✅ Pre-Release Checks
 
-## 📋 Development Policies
+- **Audit**: Code quality via `kb audit run`
+- **Build**: Verification via `pnpm build`
+- **Tests**: Coverage via vitest
+- **DevLink**: Dependency integrity
+- **Mind**: Schema consistency
 
-- **Code Style:** ESLint + Prettier, TypeScript strict mode
-- **Testing:** Vitest with fixtures for integration testing
-- **Versioning:** SemVer with automated releases through Changesets
-- **Architecture:** Document decisions in ADRs (see `docs/adr/`)
-- **Tooling:** Shared configurations via `@kb-labs/devkit` (see [ADR-0005](docs/adr/0005-use-devkit-for-shared-tooling.md))
+### 📦 Version Management
 
-## 🔧 Requirements
+- **Auto-detect** version bumps from conventional commits
+- **Manual override** via `--bump patch|minor|major`
+- **Semantic versioning** strategy
+- **Dependency graph** aware
 
-- **Node.js:** >= 18.18.0
-- **pnpm:** >= 9.0.0
+### 🚀 Publishing
 
-## 📄 License
+- **Safe publishing** only when checks pass
+- **Atomic behavior** with rollback on failure
+- **Dry-run mode** for simulation
+- **Registry configurable** (npm, custom)
 
-MIT © KB Labs
+### 📊 Reporting
+
+Formats generated:
+
+- **JSON** (`.kb/release/report.json`) — for CI/CD
+- **Markdown** (`.kb/release/summary.md`) — human readable
+- **Text** (`.kb/release/summary.txt`) — minimal output
+
+### 🔄 Rollback
+
+- **Automatic snapshots** before releases
+- **One-command recovery** from failures
+- **Backup retention** configurable
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success — release published |
+| 1 | Infrastructure error |
+| 2 | Quality gate failed |
+| 3 | Misconfiguration |
+| 4 | Rollback executed |
+
+---
+
+## Implementation Details
+
+### Release Stages
+
+1. **Planning** — detect changes, compute versions
+2. **Checking** — run pre-release quality checks
+3. **Versioning** — update package.json versions
+4. **Publishing** — build and publish to registry
+5. **Verifying** — confirm publish success
+6. **Rollback** — restore on failure
+
+### Safety Features
+
+- All checks must pass in `--strict` mode
+- Atomic operations with rollback
+- Deterministic JSON reports
+- Reproducible release plans
+
+---
+
+## Dependencies
+
+**Internal:**
+- `@kb-labs/audit` — code quality
+- `@kb-labs/devlink` — dependency checks
+- `@kb-labs/mind-*` — schema validation
+- `@kb-labs/devkit` — shared tooling
+- `@kb-labs/shared-cli-ui` — CLI presentation
+
+**External:**
+- `execa`, `fs-extra`, `globby`
+- `semver`, `simple-git`, `yaml`
+
+---
+
+## License
+
+MIT
+
+---
+
+## Author
+
+Kirill Baranov — [@kirill-baranov](https://github.com/kirill-baranov)
