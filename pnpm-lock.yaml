@@ -115,6 +115,9 @@ importers:
       '@kb-labs/core':
         specifier: link:../../../kb-labs-core
         version: link:../../../kb-labs-core
+      '@kb-labs/core-bundle':
+        specifier: link:../../../kb-labs-core/packages/bundle
+        version: link:../../../kb-labs-core/packages/bundle
       '@kb-labs/release-checks':
         specifier: link:../release-checks
         version: link:../release-checks
@@ -155,9 +158,9 @@ importers:
       '@kb-labs/core':
         specifier: link:../../../kb-labs-core
         version: link:../../../kb-labs-core
-      '@kb-labs/shared-profiles':
-        specifier: link:../../../kb-labs-shared/packages/profiles
-        version: link:../../../kb-labs-shared/packages/profiles
+      '@kb-labs/core-bundle':
+        specifier: link:../../../kb-labs-core/packages/bundle
+        version: link:../../../kb-labs-core/packages/bundle
       execa:
         specifier: ^8.0.0
         version: 8.0.1
