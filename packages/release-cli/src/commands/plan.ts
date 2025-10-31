@@ -6,7 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from '@kb-labs/cli-commands/types';
 import { box, keyValue, safeColors } from '@kb-labs/shared-cli-ui';
-import { loadConfig, planRelease } from '@kb-labs/release-core';
+import { loadReleaseConfig, planRelease } from '@kb-labs/release-core';
 import { findRepoRoot } from '../utils.js';
 
 export const plan: Command = {
@@ -20,8 +20,13 @@ export const plan: Command = {
 
     try {
       // Load configuration
-      const config = await loadConfig({
+      const { config } = await loadReleaseConfig({
         cwd: repoRoot,
+        profileKey: flags.profile as string | undefined,
+        cli: {
+          bump: flags.bump,
+          strict: flags.strict,
+        },
       });
 
       // Create release plan

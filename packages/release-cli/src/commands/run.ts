@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import type { Command } from '@kb-labs/cli-commands/types';
 import { box, formatTiming, TimingTracker, safeSymbols, safeColors } from '@kb-labs/shared-cli-ui';
 import {
-  loadConfig,
+  loadReleaseConfig,
   planRelease,
   saveSnapshot,
   restoreSnapshot,
@@ -35,8 +35,14 @@ export const run: Command = {
 
     try {
       // Load configuration
-      const config = await loadConfig({
+      const { config } = await loadReleaseConfig({
         cwd: repoRoot,
+        profileKey: flags.profile as string | undefined,
+        cli: {
+          bump: flags.bump,
+          strict: flags.strict,
+          'dry-run': flags['dry-run'],
+        },
       });
 
       // Create release plan

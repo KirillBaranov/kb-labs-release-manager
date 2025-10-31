@@ -44,6 +44,7 @@
     "@kb-labs/cli-commands": "link:../../../kb-labs-cli/packages/commands",
     "@kb-labs/shared-cli-ui": "link:../../../kb-labs-shared/packages/cli-ui",
     "@kb-labs/core": "link:../../../kb-labs-core",
+    "@kb-labs/core-bundle": "link:../../../kb-labs-core/packages/bundle",
     "globby": "^11.0.0",
     "yaml": "^2.5.1"
   },
