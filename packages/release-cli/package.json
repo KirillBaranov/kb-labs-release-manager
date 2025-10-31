@@ -1,0 +1,62 @@
+{
+  "name": "@kb-labs/release-cli",
+  "version": "0.1.0",
+  "description": "KB Labs Release Manager - CLI commands for release management",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "author": {
+    "name": "Kirill Baranov",
+    "url": "https://github.com/kirill-baranov"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kirill-baranov/kb-labs-release-manager.git",
+    "directory": "packages/release-cli"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run -c ../../vitest.config.ts",
+    "test:watch": "vitest -c ../../vitest.config.ts"
+  },
+  "dependencies": {
+    "@kb-labs/release-core": "link:../release-core",
+    "@kb-labs/release-checks": "link:../release-checks",
+    "@kb-labs/cli-core": "link:../../../kb-labs-cli/packages/core",
+    "@kb-labs/cli-commands": "link:../../../kb-labs-cli/packages/commands",
+    "@kb-labs/shared-cli-ui": "link:../../../kb-labs-shared/packages/cli-ui",
+    "@kb-labs/core": "link:../../../kb-labs-core",
+    "globby": "^11.0.0",
+    "yaml": "^2.5.1"
+  },
+  "devDependencies": {
+    "@kb-labs/devkit": "link:../../../kb-labs-devkit",
+    "@types/node": "^24.7.0",
+    "rimraf": "^6",
+    "tsup": "^8",
+    "typescript": "^5",
+    "vitest": "^3"
+  },
+  "kb": {
+    "commandsManifest": "./dist/cli.manifest.js"
+  }
+}
+
