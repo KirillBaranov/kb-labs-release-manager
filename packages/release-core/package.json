@@ -39,7 +39,7 @@
   },
   "dependencies": {
     "@kb-labs/core": "link:../../../kb-labs-core",
-    "@kb-labs/shared-profiles": "link:../../../kb-labs-shared/packages/profiles",
+    "@kb-labs/core-bundle": "link:../../../kb-labs-core/packages/bundle",
     "execa": "^8.0.0",
     "fs-extra": "^11.0.0",
     "globby": "^11.0.0",
