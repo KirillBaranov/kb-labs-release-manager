@@ -1,0 +1,55 @@
+{
+  "name": "@kb-labs/release-checks",
+  "version": "0.1.0",
+  "description": "KB Labs Release Manager - check adapters for audit, devlink, mind, tests, and build",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "author": {
+    "name": "Kirill Baranov",
+    "url": "https://github.com/kirill-baranov"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kirill-baranov/kb-labs-release-manager.git",
+    "directory": "packages/release-checks"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run -c ../../vitest.config.ts",
+    "test:watch": "vitest -c ../../vitest.config.ts"
+  },
+  "dependencies": {
+    "@kb-labs/release-core": "link:../release-core",
+    "execa": "^8.0.0",
+    "fs-extra": "^11.0.0"
+  },
+  "devDependencies": {
+    "@kb-labs/devkit": "link:../../../kb-labs-devkit",
+    "@types/fs-extra": "^11.0.0",
+    "@types/node": "^24.7.0",
+    "rimraf": "^6",
+    "tsup": "^8",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}
+
