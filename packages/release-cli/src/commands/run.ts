@@ -20,68 +20,153 @@ import {
 } from '@kb-labs/release-core';
 import { runChecks, createCheckRegistry } from '@kb-labs/release-checks';
 import { findRepoRoot } from '../utils.js';
+import { runScope, type AnalyticsEventV1, type EmitResult } from '@kb-labs/analytics-sdk-node';
+import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../analytics/events';
 
 export const run: Command = {
   name: 'release:run',
   category: 'release',
   describe: 'Execute release process (plan, check, publish)',
   async run(ctx, argv, flags) {
+    const startTime = Date.now();
     const tracker = new TimingTracker();
     const jsonMode = !!flags.json;
     const cwd = ctx?.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
 
-    tracker.checkpoint('config');
+    return await runScope(
+      {
+        actor: ANALYTICS_ACTOR,
+        ctx: { workspace: cwd },
+      },
+      async (emit: (event: Partial<AnalyticsEventV1>) => Promise<EmitResult>) => {
+        try {
+          // Track command start
+          await emit({
+            type: ANALYTICS_EVENTS.RUN_STARTED,
+            payload: {
+              profile: flags.profile as string | undefined,
+              scope: flags.scope as string | undefined,
+              bump: flags.bump as string | undefined,
+              strict: !!flags.strict,
+              dryRun: !!flags['dry-run'],
+              skipChecks: !!flags['skip-checks'],
+            },
+          });
 
-    try {
-      // Load configuration
-      const { config } = await loadReleaseConfig({
-        cwd: repoRoot,
-        profileKey: flags.profile as string | undefined,
-        cli: {
-          bump: flags.bump,
-          strict: flags.strict,
-          'dry-run': flags['dry-run'],
-        },
-      });
+          tracker.checkpoint('config');
 
-      // Create release plan
-      const plan = await planRelease({
-        cwd: repoRoot,
-        config,
-        scope: flags.scope as string | undefined,
-        bumpOverride: flags.bump as any,
-      });
-
-      tracker.checkpoint('plan');
-
-      // Save snapshot for rollback
-      await saveSnapshot({
-        cwd: repoRoot,
-        plan,
-      });
-
-      // Run pre-release checks
-      const checks = config.verify && config.verify.length > 0 && !flags['skip-checks']
-        ? await runChecks({
-            checkIds: config.verify,
+          // Load configuration
+          const { config } = await loadReleaseConfig({
             cwd: repoRoot,
-            registry: createCheckRegistry(),
-          })
-        : undefined;
+            profileKey: flags.profile as string | undefined,
+            cli: {
+              bump: flags.bump,
+              strict: flags.strict,
+              'dry-run': flags['dry-run'],
+            },
+          });
 
-      tracker.checkpoint('checks');
+          // Create release plan
+          const plan = await planRelease({
+            cwd: repoRoot,
+            config,
+            scope: flags.scope as string | undefined,
+            bumpOverride: flags.bump as any,
+          });
 
-      // Check for failures in strict mode
-      if (config.strict && checks) {
-        const failedChecks = Object.entries(checks)
-          .filter(([_, result]) => result && !result.ok)
-          .map(([id]) => id);
-        
-        if (failedChecks.length > 0) {
-          // Rollback
-          await restoreSnapshot(repoRoot);
-          
+          tracker.checkpoint('plan');
+
+          // Save snapshot for rollback
+          await saveSnapshot({
+            cwd: repoRoot,
+            plan,
+          });
+
+          // Run pre-release checks
+          const checks = config.verify && config.verify.length > 0 && !flags['skip-checks']
+            ? await runChecks({
+                checkIds: config.verify,
+                cwd: repoRoot,
+                registry: createCheckRegistry(),
+              })
+            : undefined;
+
+          tracker.checkpoint('checks');
+
+          // Check for failures in strict mode
+          if (config.strict && checks) {
+            const failedChecks = Object.entries(checks)
+              .filter(([_, result]) => result && !result.ok)
+              .map(([id]) => id);
+            
+            if (failedChecks.length > 0) {
+              // Rollback
+              await restoreSnapshot(repoRoot);
+              
+              const report: ReleaseReport = {
+                schemaVersion: '1.0',
+                ts: new Date().toISOString(),
+                context: {
+                  repo: repoRoot,
+                  cwd: repoRoot,
+                  branch: 'unknown',
+                  profile: config as any,
+                  dryRun: !!flags['dry-run'],
+                },
+                stage: 'rollback',
+                plan,
+                result: {
+                  ok: false,
+                  timingMs: tracker.total(),
+                  errors: [`Pre-release checks failed: ${failedChecks.join(', ')}`],
+                  checks,
+                },
+              };
+
+              await writeReport(repoRoot, report);
+              
+              const totalTime = Date.now() - startTime;
+
+              // Track command completion with failure
+              await emit({
+                type: ANALYTICS_EVENTS.RUN_FINISHED,
+                payload: {
+                  profile: flags.profile as string | undefined,
+                  scope: flags.scope as string | undefined,
+                  dryRun: !!flags['dry-run'],
+                  stage: 'rollback',
+                  resultOk: false,
+                  checksFailed: failedChecks.length,
+                  durationMs: totalTime,
+                  result: 'failed',
+                },
+              });
+              
+              if (jsonMode) {
+                ctx.presenter.json(report);
+              }
+              
+              return 2; // Quality gate failed
+            }
+          }
+
+          // Publish packages
+          const publishResult = await publishPackages({
+            cwd: repoRoot,
+            plan,
+            dryRun: !!flags['dry-run'],
+          });
+
+          tracker.checkpoint('publish');
+
+          // Generate changelog
+          const changelog = await generateChangelog({
+            cwd: repoRoot,
+            plan,
+          });
+
+          // Build final report
           const report: ReleaseReport = {
             schemaVersion: '1.0',
             ts: new Date().toISOString(),
@@ -92,120 +177,109 @@ export const run: Command = {
               profile: config as any,
               dryRun: !!flags['dry-run'],
             },
-            stage: 'rollback',
+            stage: 'verifying',
             plan,
             result: {
-              ok: false,
-              timingMs: tracker.total(),
-              errors: [`Pre-release checks failed: ${failedChecks.join(', ')}`],
+              ok: publishResult.errors.length === 0,
+              published: publishResult.published,
+              changelog,
               checks,
+              timingMs: tracker.total(),
+              errors: publishResult.errors.length > 0 ? publishResult.errors : undefined,
             },
           };
 
           await writeReport(repoRoot, report);
-          
+
           if (jsonMode) {
             ctx.presenter.json(report);
+          } else {
+            // Pretty print summary
+            const lines: string[] = [];
+            
+            if (report.result.ok) {
+              lines.push('Release completed successfully');
+            } else {
+              lines.push('Release failed');
+            }
+            lines.push('');
+
+            if (report.result.published && report.result.published.length > 0) {
+              lines.push('Published packages:');
+              for (const pkg of report.result.published) {
+                lines.push(`  ${safeColors.success(safeSymbols.tick)} ${pkg}`);
+              }
+              lines.push('');
+            }
+
+            if (report.result.errors && report.result.errors.length > 0) {
+              lines.push('Errors:');
+              for (const error of report.result.errors) {
+                lines.push(`  ${safeColors.error('✗')} ${error}`);
+              }
+              lines.push('');
+            }
+
+            lines.push(`Duration: ${formatTiming(report.result.timingMs)}`);
+
+            const output = box('Release Summary', lines);
+            ctx.presenter.write(output);
           }
-          
-          return 2; // Quality gate failed
-        }
-      }
 
-      // Publish packages
-      const publishResult = await publishPackages({
-        cwd: repoRoot,
-        plan,
-        dryRun: !!flags['dry-run'],
-      });
+          const totalTime = Date.now() - startTime;
 
-      tracker.checkpoint('publish');
+          // Track command completion
+          await emit({
+            type: ANALYTICS_EVENTS.RUN_FINISHED,
+            payload: {
+              profile: flags.profile as string | undefined,
+              scope: flags.scope as string | undefined,
+              dryRun: !!flags['dry-run'],
+              stage: report.stage,
+              resultOk: report.result.ok,
+              publishedCount: report.result.published?.length || 0,
+              errorsCount: report.result.errors?.length || 0,
+              durationMs: totalTime,
+              result: report.result.ok ? 'success' : 'failed',
+            },
+          });
 
-      // Generate changelog
-      const changelog = await generateChangelog({
-        cwd: repoRoot,
-        plan,
-      });
+          return report.result.ok ? 0 : 1;
+        } catch (error) {
+          const totalTime = Date.now() - startTime;
 
-      // Build final report
-      const report: ReleaseReport = {
-        schemaVersion: '1.0',
-        ts: new Date().toISOString(),
-        context: {
-          repo: repoRoot,
-          cwd: repoRoot,
-          branch: 'unknown',
-          profile: config as any,
-          dryRun: !!flags['dry-run'],
-        },
-        stage: 'verifying',
-        plan,
-        result: {
-          ok: publishResult.errors.length === 0,
-          published: publishResult.published,
-          changelog,
-          checks,
-          timingMs: tracker.total(),
-          errors: publishResult.errors.length > 0 ? publishResult.errors : undefined,
-        },
-      };
-
-      await writeReport(repoRoot, report);
-
-      if (jsonMode) {
-        ctx.presenter.json(report);
-      } else {
-        // Pretty print summary
-        const lines: string[] = [];
-        
-        if (report.result.ok) {
-          lines.push('Release completed successfully');
-        } else {
-          lines.push('Release failed');
-        }
-        lines.push('');
-
-        if (report.result.published && report.result.published.length > 0) {
-          lines.push('Published packages:');
-          for (const pkg of report.result.published) {
-            lines.push(`  ${safeColors.success(safeSymbols.tick)} ${pkg}`);
+          // Attempt rollback
+          try {
+            await restoreSnapshot(repoRoot);
+          } catch {
+            // Rollback failed - continue
           }
-          lines.push('');
-        }
 
-        if (report.result.errors && report.result.errors.length > 0) {
-          lines.push('Errors:');
-          for (const error of report.result.errors) {
-            lines.push(`  ${safeColors.error('✗')} ${error}`);
+          // Track command failure
+          await emit({
+            type: ANALYTICS_EVENTS.RUN_FINISHED,
+            payload: {
+              profile: flags.profile as string | undefined,
+              scope: flags.scope as string | undefined,
+              dryRun: !!flags['dry-run'],
+              durationMs: totalTime,
+              result: 'error',
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+
+          if (jsonMode) {
+            ctx.presenter.json({
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          } else {
+            ctx.presenter.error(`Release failed: ${error instanceof Error ? error.message : String(error)}`);
           }
-          lines.push('');
+          return 1;
         }
-
-        lines.push(`Duration: ${formatTiming(report.result.timingMs)}`);
-
-        const output = box('Release Summary', lines);
-        ctx.presenter.write(output);
       }
-
-      return report.result.ok ? 0 : 1;
-    } catch (error) {
-      // Attempt rollback
-      try {
-        await restoreSnapshot(repoRoot);
-      } catch {
-        // Rollback failed - continue
-      }
-
-      if (jsonMode) {
-        ctx.presenter.json({
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      } else {
-        ctx.presenter.error(`Release failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      return 1;
-    }
+    );
   },
 };
 
