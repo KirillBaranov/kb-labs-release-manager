@@ -1,8 +1,13 @@
-# ADR-0000: [Brief Decision Title]
+# ADR-XXXX: [Brief Decision Title]
 
-**Date:** 2025-09-13
+**Date:** YYYY-MM-DD
 **Status:** Proposed | Accepted | Deprecated | Superseded
 **Deciders:** KB Labs Team
+**Last Reviewed:** YYYY-MM-DD
+**Reviewers:** [Optional list of reviewers]
+**Tags:** [tag1, tag2, tag3]
+
+> **Note:** Tags are mandatory. Minimum 1 tag, maximum 5 tags. See approved tags list in [DOCUMENTATION.md](../DOCUMENTATION.md#adr-tags).
 
 ## Context
 
@@ -37,3 +42,8 @@ _Will this decision be revisited in the future?_
 
 - [Discussion / Pull Request](url)
 - [Related ADRs](./0000-other-decision.md)
+
+---
+
+**Last Updated:** YYYY-MM-DD  
+**Next Review:** YYYY-MM-DD (if scheduled)

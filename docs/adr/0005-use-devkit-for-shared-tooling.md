@@ -1,8 +1,10 @@
 # ADR-0005: Use DevKit for Shared Tooling
 
-**Date:** 2025-09-15  
-**Status:** Accepted  
+**Date:** 2025-09-15
+**Status:** Accepted
 **Deciders:** KB Labs Team
+**Last Reviewed:** 2025-11-03
+**Tags:** [tooling, process]
 
 ## Context
 
