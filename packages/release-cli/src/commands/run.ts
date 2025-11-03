@@ -28,7 +28,6 @@ export const run: Command = {
   category: 'release',
   describe: 'Execute release process (plan, check, publish)',
   async run(ctx, argv, flags) {
-    const startTime = Date.now();
     const tracker = new TimingTracker();
     const jsonMode = !!flags.json;
     const cwd = ctx?.cwd || process.cwd();
@@ -125,8 +124,6 @@ export const run: Command = {
               };
 
               await writeReport(repoRoot, report);
-              
-              const totalTime = Date.now() - startTime;
 
               // Track command completion with failure
               await emit({
@@ -138,7 +135,7 @@ export const run: Command = {
                   stage: 'rollback',
                   resultOk: false,
                   checksFailed: failedChecks.length,
-                  durationMs: totalTime,
+                  durationMs: tracker.total(),
                   result: 'failed',
                 },
               });
@@ -226,8 +223,6 @@ export const run: Command = {
             ctx.presenter.write(output);
           }
 
-          const totalTime = Date.now() - startTime;
-
           // Track command completion
           await emit({
             type: ANALYTICS_EVENTS.RUN_FINISHED,
@@ -239,15 +234,13 @@ export const run: Command = {
               resultOk: report.result.ok,
               publishedCount: report.result.published?.length || 0,
               errorsCount: report.result.errors?.length || 0,
-              durationMs: totalTime,
+              durationMs: tracker.total(),
               result: report.result.ok ? 'success' : 'failed',
             },
           });
 
           return report.result.ok ? 0 : 1;
         } catch (error) {
-          const totalTime = Date.now() - startTime;
-
           // Attempt rollback
           try {
             await restoreSnapshot(repoRoot);
@@ -262,7 +255,7 @@ export const run: Command = {
               profile: flags.profile as string | undefined,
               scope: flags.scope as string | undefined,
               dryRun: !!flags['dry-run'],
-              durationMs: totalTime,
+              durationMs: tracker.total(),
               result: 'error',
               error: error instanceof Error ? error.message : String(error),
             },

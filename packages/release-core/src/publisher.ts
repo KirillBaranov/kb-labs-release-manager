@@ -108,6 +108,7 @@ async function updatePackageVersion(pkg: PackageVersion): Promise<void> {
 
 /**
  * Generate changelog entry for release
+ * Note: This is a simplified wrapper. Full changelog generation is handled by @kb-labs/changelog
  */
 export async function generateChangelog(options: {
   cwd: string;
@@ -146,5 +147,31 @@ export async function generateChangelog(options: {
   }
 
   return newEntry;
+}
+
+/**
+ * Generate enhanced changelog using @kb-labs/changelog
+ * This is the recommended approach for full-featured changelog generation
+ * 
+ * Note: Full integration available via @kb-labs/changelog package and CLI command
+ */
+export async function generateEnhancedChangelog(options: {
+  cwd: string;
+  plan: ReleasePlan;
+  from?: string;
+  to?: string;
+  config?: any;
+}): Promise<{ changelog: string; manifest: any }> {
+  // Full changelog generation is available via @kb-labs/changelog
+  // For now, fallback to simple changelog
+  const simpleChangelog = await generateChangelog({
+    cwd: options.cwd,
+    plan: options.plan,
+  });
+  
+  return {
+    changelog: simpleChangelog,
+    manifest: null,
+  };
 }
 

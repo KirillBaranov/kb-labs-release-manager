@@ -150,5 +150,153 @@ export const commands: CommandManifest[] = [
       return { run: mod.report.run };
     },
   },
+  {
+    manifestVersion: '1.0',
+    id: 'release:changelog',
+    group: 'release',
+    describe: 'Generate changelog from conventional commits',
+    longDescription: 'Parse git history and generate changelog with conventional commits support',
+    flags: [
+      {
+        name: 'scope',
+        type: 'string',
+        description: 'Filter to specific package',
+      },
+      {
+        name: 'from',
+        type: 'string',
+        description: 'Start commit/tag',
+      },
+      {
+        name: 'to',
+        type: 'string',
+        description: 'End commit/tag (default: HEAD)',
+      },
+      {
+        name: 'since-tag',
+        type: 'string',
+        description: 'Shorthand for --from <tag>',
+      },
+      {
+        name: 'format',
+        type: 'string',
+        choices: ['json', 'md', 'both'],
+        default: 'both',
+        description: 'Output format',
+      },
+      {
+        name: 'level',
+        type: 'string',
+        choices: ['compact', 'standard', 'detailed'],
+        default: 'standard',
+        description: 'Detail level',
+      },
+      {
+        name: 'breaking-only',
+        type: 'boolean',
+        description: 'Show only breaking changes',
+      },
+      {
+        name: 'include',
+        type: 'string',
+        description: 'Comma-separated types to include',
+      },
+      {
+        name: 'exclude',
+        type: 'string',
+        description: 'Types to exclude',
+      },
+      {
+        name: 'workspace-only',
+        type: 'boolean',
+        description: 'Only workspace changelog',
+      },
+      {
+        name: 'per-package',
+        type: 'boolean',
+        description: 'Only per-package changelogs',
+      },
+      {
+        name: 'force',
+        type: 'boolean',
+        description: 'Skip audit gate',
+      },
+      {
+        name: 'allow-major',
+        type: 'boolean',
+        description: 'Allow major bumps for experimental packages',
+      },
+      {
+        name: 'preid',
+        type: 'string',
+        description: 'Pre-release identifier (rc, beta, alpha)',
+      },
+    ],
+    examples: [
+      'kb release changelog',
+      'kb release changelog --from v1.0.0',
+      'kb release changelog --format md --level detailed',
+      'kb release changelog --breaking-only',
+    ],
+    loader: async () => {
+      const mod = await import('./commands/changelog');
+      return { run: mod.changelog.run };
+    },
+  },
+  {
+    manifestVersion: '1.0',
+    id: 'release:preview',
+    group: 'release',
+    describe: 'Preview release plan without making changes',
+    longDescription: 'Show release plan with bump table and changelog preview',
+    flags: [
+      {
+        name: 'md',
+        type: 'boolean',
+        description: 'Print markdown preview',
+      },
+    ],
+    examples: [
+      'kb release preview',
+      'kb release preview --md',
+    ],
+    loader: async () => {
+      const mod = await import('./commands/preview');
+      return { run: mod.preview.run };
+    },
+  },
+  {
+    manifestVersion: '1.0',
+    id: 'release:verify',
+    group: 'release',
+    describe: 'Validate release readiness',
+    longDescription: 'Check if repo has substantial changes for release',
+    flags: [
+      {
+        name: 'fail-if-empty',
+        type: 'boolean',
+        description: 'Fail if no version bumps needed',
+      },
+      {
+        name: 'fail-on-breaking',
+        type: 'boolean',
+        description: 'Fail if breaking changes detected',
+      },
+      {
+        name: 'allow-types',
+        type: 'string',
+        description: 'Comma-separated types required (e.g., feat,fix)',
+      },
+    ],
+    examples: [
+      'kb release verify',
+      'kb release verify --fail-if-empty',
+      'kb release verify --allow-types feat,fix',
+    ],
+    loader: async () => {
+      const mod = await import('./commands/verify');
+      return { run: mod.verify.run };
+    },
+  },
 ];
 

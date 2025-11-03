@@ -41,6 +41,7 @@
     "@kb-labs/analytics-sdk-node": "link:../../../kb-labs-analytics/packages/analytics-sdk-node",
     "@kb-labs/release-core": "link:../release-core",
     "@kb-labs/release-checks": "link:../release-checks",
+    "@kb-labs/changelog": "link:../changelog",
     "@kb-labs/cli-core": "link:../../../kb-labs-cli/packages/core",
     "@kb-labs/cli-commands": "link:../../../kb-labs-cli/packages/commands",
     "@kb-labs/shared-cli-ui": "link:../../../kb-labs-shared/packages/cli-ui",

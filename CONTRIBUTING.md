@@ -11,12 +11,36 @@ pnpm i
 pnpm dev
 ```
 
-## Guidelines
+## 📋 Development Guidelines
 
-- **Coding style**: follow ESLint + Prettier rules. Run `pnpm lint` before pushing.
-- **Testing**: cover all changes with Vitest. Run `pnpm test`.
-- **Commits**: use clear, conventional messages (e.g., `feat: add X`, `fix: correct Y`).
-- **ADRs**: for architectural changes, add a new record in `docs/adr`.
+### Code Style
+
+- **Coding style**: Follow ESLint + Prettier rules. Run `pnpm lint` before pushing.
+- **TypeScript**: Use strict mode and proper type annotations.
+- **Testing**: Cover all changes with Vitest. Run `pnpm test`.
+- **Documentation**: Document all public APIs and complex logic.
+
+### Commit Messages
+
+Use conventional commit format:
+
+```
+feat: add new feature
+fix: correct bug
+docs: update documentation
+refactor: restructure code
+test: add or update tests
+chore: maintenance tasks
+```
+
+### Architecture Decisions
+
+- For significant architectural changes, add an ADR in `docs/adr/`
+- Follow the ADR template in `docs/adr/0000-template.md`
+- Include required metadata (Date, Status, Deciders, **Last Reviewed**, **Tags**)
+- **Last Reviewed** date is required and should be updated periodically
+- **Tags** are mandatory (minimum 1, maximum 5 tags from approved list)
+- See [Documentation Standard](./docs/DOCUMENTATION.md) for ADR format requirements
 
 ## DevKit Integration
 
@@ -38,9 +62,29 @@ For more details, see [ADR-0005: Use DevKit for Shared Tooling](docs/adr/0005-us
 
 ---
 
-## Pull requests
+## 🔄 Pull Request Process
 
-1. Fork the repo and create a feature branch.
-2. Make your changes.
-3. Run `pnpm check` (lint + type-check + tests).
-4. Submit a PR with a clear description of your changes.
+### Before Submitting
+
+1. **Fork** the repository and create a feature branch
+2. **Make your changes** following the guidelines above
+3. **Test thoroughly**:
+   ```bash
+   pnpm check  # Runs lint + type-check + tests
+   ```
+4. **Update documentation** if needed (README, API docs, ADRs)
+5. **Submit a PR** with:
+   - Clear description of changes
+   - Reference any related issues
+   - Ensure all CI checks pass
+
+### PR Requirements
+
+- Clear, descriptive title and description
+- Reference any related issues
+- Ensure all CI checks pass
+- Request review from maintainers
+
+---
+
+**See [Documentation Standard](./docs/DOCUMENTATION.md) for complete documentation guidelines.**

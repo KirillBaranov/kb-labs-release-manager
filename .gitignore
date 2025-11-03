@@ -58,10 +58,8 @@ apps/*/coverage/
 packages/*/coverage/
 
 # ───────────────
-# Analytics / Sentinel / custom
+# custom
 # ───────────────
-.sentinel/
-analytics/
 *.sqlite
 *.db
 

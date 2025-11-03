@@ -4,7 +4,7 @@
  */
 
 import { loadBundle } from '@kb-labs/core-bundle';
-import type { ReleaseConfig } from './types.js';
+import type { ReleaseConfig } from './types';
 
 export interface LoadReleaseConfigOptions {
   cwd?: string;

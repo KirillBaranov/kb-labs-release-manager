@@ -1,7 +1,7 @@
 {
-  "name": "@kb-labs/release-core",
+  "name": "@kb-labs/changelog",
   "version": "0.1.0",
-  "description": "KB Labs Release Manager - core orchestration, planning, versioning, and publishing",
+  "description": "KB Labs Release Manager - conventional commits parser and changelog generator",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +25,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/kirill-baranov/kb-labs-release-manager.git",
-    "directory": "packages/release-core"
+    "directory": "packages/changelog"
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -38,19 +38,12 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
-    "@kb-labs/core": "link:../../../kb-labs-core",
-    "@kb-labs/core-bundle": "link:../../../kb-labs-core/packages/bundle",
-    "@kb-labs/changelog": "link:../changelog",
-    "execa": "^8.0.0",
-    "fs-extra": "^11.0.0",
-    "globby": "^11.0.0",
+    "conventional-commits-parser": "^4.0.0",
     "semver": "^7.6.0",
-    "simple-git": "^3.25.0",
-    "yaml": "^2.5.1"
+    "simple-git": "^3.25.0"
   },
   "devDependencies": {
     "@kb-labs/devkit": "link:../../../kb-labs-devkit",
-    "@types/fs-extra": "^11.0.0",
     "@types/node": "^24.7.0",
     "@types/semver": "^7.5.0",
     "rimraf": "^6",

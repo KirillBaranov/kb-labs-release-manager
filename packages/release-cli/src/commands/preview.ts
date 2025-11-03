@@ -1,20 +1,19 @@
 /**
- * Release plan command
+ * Release preview command
+ * Dry-run release planning
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { Command } from '@kb-labs/cli-commands/types';
-import { box, keyValue, safeColors, TimingTracker } from '@kb-labs/shared-cli-ui';
-import { loadReleaseConfig, planRelease } from '@kb-labs/release-core';
+import type { Command } from '@kb-labs/cli-commands';
+import { box, safeColors, keyValue, TimingTracker } from '@kb-labs/shared-cli-ui';
+import { loadReleaseConfig, planRelease, type ReleaseConfig } from '@kb-labs/release-core';
 import { findRepoRoot } from '../utils.js';
 import { runScope, type AnalyticsEventV1, type EmitResult } from '@kb-labs/analytics-sdk-node';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../analytics/events';
 
-export const plan: Command = {
-  name: 'release:plan',
+export const preview: Command = {
+  name: 'release:preview',
   category: 'release',
-  describe: 'Analyze changes and prepare release plan',
+  describe: 'Preview release plan without making changes',
   async run(ctx, argv, flags) {
     const tracker = new TimingTracker();
     const jsonMode = !!flags.json;
@@ -30,15 +29,15 @@ export const plan: Command = {
         try {
           // Track command start
           await emit({
-            type: ANALYTICS_EVENTS.PLAN_STARTED,
+            type: ANALYTICS_EVENTS.PREVIEW_STARTED,
             payload: {
               profile: flags.profile as string | undefined,
               scope: flags.scope as string | undefined,
               bump: flags.bump as string | undefined,
-              strict: !!flags.strict,
             },
           });
-          // Load configuration
+
+          // Load configuration and create plan
           const { config } = await loadReleaseConfig({
             cwd: repoRoot,
             profileKey: flags.profile as string | undefined,
@@ -48,7 +47,6 @@ export const plan: Command = {
             },
           });
 
-          // Create release plan
           const plan = await planRelease({
             cwd: repoRoot,
             config,
@@ -56,25 +54,19 @@ export const plan: Command = {
             bumpOverride: flags.bump as any,
           });
 
-          // Save plan to .kb/release/plan.json
-          if (!jsonMode) {
-            const planDir = join(repoRoot, '.kb', 'release');
-            await mkdir(planDir, { recursive: true });
-            const planPath = join(planDir, 'plan.json');
-            await writeFile(planPath, JSON.stringify(plan, null, 2), 'utf-8');
-          }
-
+          // Format preview output
           if (jsonMode) {
             ctx.presenter.json(plan);
           } else {
-            // Pretty print plan
             const lines: string[] = [];
-            lines.push('Release Plan:');
+            lines.push('Release Preview (dry-run):');
             lines.push('');
 
             if (plan.packages.length === 0) {
               lines.push('No packages to release.');
             } else {
+              lines.push('Planned Bumps:');
+              lines.push('');
               const packageDisplay: Record<string, string> = {};
               for (const pkg of plan.packages) {
                 packageDisplay[pkg.name] = `${pkg.currentVersion} → ${safeColors.info(pkg.nextVersion)} [${pkg.bump}]`;
@@ -83,22 +75,23 @@ export const plan: Command = {
             }
 
             lines.push('');
-            lines.push(`Strategy: ${plan.strategy}`);
-            lines.push(`Registry: ${plan.registry}`);
-            lines.push(`Rollback: ${plan.rollbackEnabled ? 'enabled' : 'disabled'}`);
+            const summary: Record<string, string> = {
+              'Strategy': plan.strategy,
+              'Registry': plan.registry,
+              'Rollback': plan.rollbackEnabled ? 'enabled' : 'disabled',
+              'Status': 'dry-run (no changes made)',
+            };
+            lines.push(...keyValue(summary));
 
-            const output = box('Release Plan', lines);
+            const output = box('Release Preview', lines);
             ctx.presenter.write(output);
           }
 
-          // Track command completion
+          // Track completion
           await emit({
-            type: ANALYTICS_EVENTS.PLAN_FINISHED,
+            type: ANALYTICS_EVENTS.PREVIEW_FINISHED,
             payload: {
-              profile: flags.profile as string | undefined,
-              scope: flags.scope as string | undefined,
               packagesCount: plan.packages.length,
-              strategy: plan.strategy,
               durationMs: tracker.total(),
               result: 'success',
             },
@@ -106,30 +99,22 @@ export const plan: Command = {
 
           return 0;
         } catch (error) {
-          // Track command failure
+          // Track failure
           await emit({
-            type: ANALYTICS_EVENTS.PLAN_FINISHED,
+            type: ANALYTICS_EVENTS.PREVIEW_FINISHED,
             payload: {
-              profile: flags.profile as string | undefined,
-              scope: flags.scope as string | undefined,
               durationMs: tracker.total(),
               result: 'error',
               error: error instanceof Error ? error.message : String(error),
             },
           });
 
-          if (jsonMode) {
-            ctx.presenter.json({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          } else {
-            ctx.presenter.error(`Failed to create plan: ${error instanceof Error ? error.message : String(error)}`);
-          }
+          ctx.presenter.error(`Preview failed: ${error instanceof Error ? error.message : String(error)}`);
           return 1;
         }
       }
     );
   },
 };
+
 

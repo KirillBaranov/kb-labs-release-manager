@@ -5,7 +5,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from '@kb-labs/cli-commands/types';
-import { box } from '@kb-labs/shared-cli-ui';
+import { box, TimingTracker } from '@kb-labs/shared-cli-ui';
 import type { ReleaseReport } from '@kb-labs/release-core';
 import { findRepoRoot } from '../utils.js';
 import { runScope, type AnalyticsEventV1, type EmitResult } from '@kb-labs/analytics-sdk-node';
@@ -16,7 +16,7 @@ export const report: Command = {
   category: 'release',
   describe: 'Show last release report',
   async run(ctx, argv, flags) {
-    const startTime = Date.now();
+    const tracker = new TimingTracker();
     const jsonMode = !!flags.json;
     const cwd = ctx?.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
@@ -38,8 +38,6 @@ export const report: Command = {
 
           const reportContent = await readFile(reportPath, 'utf-8');
           const report = JSON.parse(reportContent) as ReleaseReport;
-
-          const totalTime = Date.now() - startTime;
 
           if (jsonMode) {
             ctx.presenter.json(report);
@@ -68,20 +66,18 @@ export const report: Command = {
             payload: {
               stage: report.stage,
               resultOk: report.result.ok,
-              durationMs: totalTime,
+              durationMs: tracker.total(),
               result: 'success',
             },
           });
 
           return 0;
         } catch (error) {
-          const totalTime = Date.now() - startTime;
-
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             await emit({
               type: ANALYTICS_EVENTS.REPORT_FINISHED,
               payload: {
-                durationMs: totalTime,
+                durationMs: tracker.total(),
                 result: 'failed',
                 error: 'No release report found',
               },
@@ -99,7 +95,7 @@ export const report: Command = {
           await emit({
             type: ANALYTICS_EVENTS.REPORT_FINISHED,
             payload: {
-              durationMs: totalTime,
+              durationMs: tracker.total(),
               result: 'error',
               error: error instanceof Error ? error.message : String(error),
             },

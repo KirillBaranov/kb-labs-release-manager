@@ -87,6 +87,38 @@ export interface ReleaseConfig {
     md?: boolean;
     text?: boolean;
   };
+  changelog?: {
+    enabled?: boolean;
+    includeTypes?: string[];
+    excludeTypes?: string[];
+    ignoreAuthors?: string[];
+    scopeMap?: Record<string, string>;
+    collapseMerges?: boolean;
+    collapseReverts?: boolean;
+    preferMergeSummary?: boolean;
+    bumpStrategy?: 'independent' | 'ripple' | 'lockstep';
+    workspace?: boolean;
+    perPackage?: boolean;
+    format?: 'json' | 'md' | 'both';
+    level?: 'compact' | 'standard' | 'detailed';
+    template?: string | null;
+    locale?: 'en' | 'ru';
+    cache?: boolean;
+    requireAudit?: boolean;
+    requireSignedTags?: boolean;
+    redactPatterns?: string[];
+    maxBodyLength?: number;
+    stabilityGuards?: {
+      experimental?: { allowMajor?: boolean };
+    };
+    ignoreSubmodules?: boolean;
+  };
+  git?: {
+    provider?: 'auto' | 'github' | 'gitlab' | 'generic';
+    baseUrl?: string | null;
+    autoUnshallow?: boolean;
+    requireSignedTags?: boolean;
+  };
 }
 
 export interface AuditSummary {

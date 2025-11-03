@@ -57,7 +57,7 @@
     ]
   },
   "devDependencies": {
-    "@kb-labs/devkit": "github:KirillBaranov/kb-labs-devkit#main",
+    "@kb-labs/devkit": "link:../kb-labs-devkit",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "@vitest/coverage-v8": "^3",
