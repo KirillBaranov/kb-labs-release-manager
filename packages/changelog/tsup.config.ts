@@ -1,14 +1,12 @@
-import { defineConfig } from 'tsup';
+import config from "@kb-labs/devkit/tsup/node.js";
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['esm'],
-  dts: true,
-  clean: true,
-  sourcemap: true,
-  splitting: false,
-  treeshake: true,
-  external: ['conventional-commits-parser', 'semver', 'simple-git'],
-});
+export default {
+  ...config,
+  entry: {
+    index: "src/index.ts",
+  },
+  external: [/^@kb-labs\//, "conventional-commits-parser", "semver", "simple-git"],
+  skipNodeModulesBundle: true,
+};
 
 
