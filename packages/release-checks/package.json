@@ -38,6 +38,7 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
+    "@kb-labs/plugin-contracts": "link:../../../kb-labs-plugin/packages/plugin-contracts",
     "@kb-labs/release-core": "link:../release-core",
     "execa": "^8.0.0",
     "fs-extra": "^11.0.0"
