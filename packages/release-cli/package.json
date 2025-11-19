@@ -43,6 +43,7 @@
     "@kb-labs/release-checks": "link:../release-checks",
     "@kb-labs/changelog": "link:../changelog",
     "@kb-labs/cli-core": "link:../../../kb-labs-cli/packages/core",
+    "@kb-labs/cli-command-kit": "link:../../../kb-labs-cli/packages/command-kit",
     "@kb-labs/cli-commands": "link:../../../kb-labs-cli/packages/commands",
     "@kb-labs/shared-cli-ui": "link:../../../kb-labs-shared/packages/cli-ui",
     "@kb-labs/core": "link:../../../kb-labs-core",
