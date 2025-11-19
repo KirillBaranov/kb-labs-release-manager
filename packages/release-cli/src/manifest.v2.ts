@@ -1,4 +1,9 @@
-import type { ManifestV2 } from '@kb-labs/plugin-manifest';
+import { createManifestV2 } from '@kb-labs/plugin-manifest';
+import { pluginContractsManifest } from '@kb-labs/release-contracts';
+
+/**
+ * Level 2: Типизация через contracts для автодополнения и проверки ID
+ */
 
 const releaseFsAllow = ['.kb/release/**', 'package.json', '**/package.json', 'pnpm-workspace.yaml', '**/.git/**'];
 const releaseFsDeny = ['**/*.key', '**/*.secret'];
@@ -144,7 +149,7 @@ const commands: CliCommands = [
   },
 ];
 
-export const manifest: ManifestV2 = {
+export const manifest = createManifestV2<typeof pluginContractsManifest>({
   schema: 'kb.plugin/2',
   id: '@kb-labs/release',
   version: '0.1.0',
@@ -356,7 +361,7 @@ export const manifest: ManifestV2 = {
       description: 'Workspace changelog output produced during release.',
     },
   ],
-};
+});
 
 export default manifest;
 
