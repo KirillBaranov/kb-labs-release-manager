@@ -4,140 +4,142 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Command } from '@kb-labs/cli-commands/types';
-import { box, keyValue, safeColors, TimingTracker } from '@kb-labs/shared-cli-ui';
-import { loadReleaseConfig, planRelease } from '@kb-labs/release-core';
+import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
+import { keyValue } from '@kb-labs/shared-cli-ui';
+import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-core';
 import { findRepoRoot } from '../../shared/utils.js';
-import { runScope, type AnalyticsEventV1, type EmitResult } from '@kb-labs/analytics-sdk-node';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
 
-export const plan: Command = {
-  name: 'release:plan',
-  category: 'release',
-  describe: 'Analyze changes and prepare release plan',
-  async run(ctx, argv, flags) {
-    const tracker = new TimingTracker();
-    const jsonMode = !!flags.json;
-    const cwd = ctx?.cwd || process.cwd();
-    const repoRoot = await findRepoRoot(cwd);
-
-    return await runScope(
-      {
-        actor: ANALYTICS_ACTOR,
-        ctx: { workspace: cwd },
-      },
-      async (emit: (event: Partial<AnalyticsEventV1>) => Promise<EmitResult>) => {
-        try {
-          // Track command start
-          await emit({
-            type: ANALYTICS_EVENTS.PLAN_STARTED,
-            payload: {
-              profile: flags.profile as string | undefined,
-              scope: flags.scope as string | undefined,
-              bump: flags.bump as string | undefined,
-              strict: !!flags.strict,
-            },
-          });
-          // Load configuration
-          const { config } = await loadReleaseConfig({
-            cwd: repoRoot,
-            profileKey: flags.profile as string | undefined,
-            cli: {
-              bump: flags.bump,
-              strict: flags.strict,
-            },
-          });
-
-          // Create release plan
-          const plan = await planRelease({
-            cwd: repoRoot,
-            config,
-            scope: flags.scope as string | undefined,
-            bumpOverride: flags.bump as any,
-          });
-
-          // Save plan to .kb/release/plan.json
-          if (!jsonMode) {
-            const planDir = join(repoRoot, '.kb', 'release');
-            await mkdir(planDir, { recursive: true });
-            const planPath = join(planDir, 'plan.json');
-            await writeFile(planPath, JSON.stringify(plan, null, 2), 'utf-8');
-          }
-
-          if (jsonMode) {
-            ctx.presenter.json(plan);
-          } else {
-            // Pretty print plan
-            const lines: string[] = [];
-            lines.push('Release Plan:');
-            lines.push('');
-
-            if (plan.packages.length === 0) {
-              lines.push('No packages to release.');
-            } else {
-              const packageDisplay: Record<string, string> = {};
-              for (const pkg of plan.packages) {
-                packageDisplay[pkg.name] = `${pkg.currentVersion} → ${safeColors.info(pkg.nextVersion)} [${pkg.bump}]`;
-              }
-              lines.push(...keyValue(packageDisplay));
-            }
-
-            lines.push('');
-            lines.push(`Strategy: ${plan.strategy}`);
-            lines.push(`Registry: ${plan.registry}`);
-            lines.push(`Rollback: ${plan.rollbackEnabled ? 'enabled' : 'disabled'}`);
-
-            const output = box('Release Plan', lines);
-            ctx.presenter.write(output);
-          }
-
-          // Track command completion
-          await emit({
-            type: ANALYTICS_EVENTS.PLAN_FINISHED,
-            payload: {
-              profile: flags.profile as string | undefined,
-              scope: flags.scope as string | undefined,
-              packagesCount: plan.packages.length,
-              strategy: plan.strategy,
-              durationMs: tracker.total(),
-              result: 'success',
-            },
-          });
-
-          return 0;
-        } catch (error) {
-          // Track command failure
-          await emit({
-            type: ANALYTICS_EVENTS.PLAN_FINISHED,
-            payload: {
-              profile: flags.profile as string | undefined,
-              scope: flags.scope as string | undefined,
-              durationMs: tracker.total(),
-              result: 'error',
-              error: error instanceof Error ? error.message : String(error),
-            },
-          });
-
-          if (jsonMode) {
-            ctx.presenter.json({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          } else {
-            ctx.presenter.error(`Failed to create plan: ${error instanceof Error ? error.message : String(error)}`);
-          }
-          return 1;
-        }
-      }
-    );
-  },
+type ReleasePlanFlags = {
+  scope: { type: 'string'; description?: string };
+  profile: { type: 'string'; description?: string };
+  bump: { type: 'string'; description?: string; choices?: readonly string[]; default?: string };
+  strict: { type: 'boolean'; description?: string; default?: boolean };
+  json: { type: 'boolean'; description?: string; default?: boolean };
 };
 
-export async function planCommand(
-  ctx: Parameters<Command['run']>[0],
-  argv: Parameters<Command['run']>[1],
-  flags: Parameters<Command['run']>[2]
-) {
-  return plan.run(ctx, argv, flags);
-}
+type ReleasePlanResult = CommandResult & {
+  plan?: {
+    strategy: string;
+    registry: string;
+    packages: Array<{
+      name: string;
+      currentVersion?: string;
+      nextVersion?: string;
+    }>;
+  };
+};
 
+export const planCommand = defineCommand<ReleasePlanFlags, ReleasePlanResult>({
+  name: 'release:plan',
+  flags: {
+    scope: {
+      type: 'string',
+      description: 'Package scope (glob pattern)',
+    },
+    profile: {
+      type: 'string',
+      description: 'Release profile to use',
+    },
+    bump: {
+      type: 'string',
+      description: 'Version bump strategy',
+      choices: ['patch', 'minor', 'major', 'auto'] as const,
+      default: 'auto',
+    },
+    strict: {
+      type: 'boolean',
+      description: 'Fail on any check failure',
+      default: false,
+    },
+    json: {
+      type: 'boolean',
+      description: 'Print plan as JSON',
+      default: false,
+    },
+  },
+  analytics: {
+    startEvent: ANALYTICS_EVENTS.PLAN_STARTED,
+    finishEvent: ANALYTICS_EVENTS.PLAN_FINISHED,
+    actor: ANALYTICS_ACTOR.id,
+    includeFlags: true,
+  },
+  async handler(ctx, argv, flags) {
+    const cwd = ctx.cwd || process.cwd();
+    const repoRoot = await findRepoRoot(cwd);
+    
+    ctx.tracker.checkpoint('config');
+
+    // Load configuration
+    const { config } = await loadReleaseConfig({
+      cwd: repoRoot,
+      profileKey: flags.profile,
+      cli: {
+        bump: flags.bump,
+        strict: flags.strict,
+      },
+    });
+
+    ctx.tracker.checkpoint('plan');
+
+    // Create release plan
+    const plan = await planRelease({
+      cwd: repoRoot,
+      config,
+      scope: flags.scope,
+      bumpOverride: flags.bump as VersionBump | undefined,
+    });
+
+    ctx.tracker.checkpoint('complete');
+
+    // Save plan to .kb/release/plan.json
+    if (!flags.json) {
+      const planDir = join(repoRoot, '.kb', 'release');
+      await mkdir(planDir, { recursive: true });
+      const planPath = join(planDir, 'plan.json');
+      await writeFile(planPath, JSON.stringify(plan, null, 2), 'utf-8');
+    }
+
+    ctx.logger?.info('Release plan completed', { 
+      packagesCount: plan.packages.length,
+      strategy: plan.strategy,
+      registry: plan.registry,
+    });
+
+    if (flags.json) {
+      ctx.output?.json(plan);
+    } else {
+      if (!ctx.output) {
+        throw new Error('Output not available');
+      }
+      
+      const lines: string[] = [];
+      lines.push('Release Plan:');
+      lines.push('');
+      const summary: Record<string, string> = {
+        'Strategy': plan.strategy,
+        'Registry': plan.registry,
+        'Packages': plan.packages.length.toString(),
+      };
+      lines.push(...keyValue(summary));
+      lines.push('');
+      
+      if (plan.packages.length > 0) {
+        lines.push('Packages to release:');
+        for (const pkg of plan.packages) {
+          const versionInfo = pkg.currentVersion && pkg.nextVersion
+            ? `${pkg.currentVersion} → ${pkg.nextVersion}`
+            : pkg.nextVersion || 'new';
+          lines.push(`  ${ctx.output.ui.colors.success('✓')} ${pkg.name}: ${versionInfo}`);
+        }
+      } else {
+        lines.push('No packages to release');
+      }
+
+      const outputText = ctx.output.ui.box('Release Plan', lines);
+      ctx.output.write(outputText);
+    }
+
+    return { ok: true, plan };
+  },
+});
