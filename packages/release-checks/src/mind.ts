@@ -3,16 +3,18 @@
  * Calls: kb mind verify --json
  */
 
-import { execa } from 'execa';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BaseCheckAdapter } from './base.js';
 import type { CheckResult } from '@kb-labs/release-core';
+import type { ShellApi } from '@kb-labs/plugin-contracts';
+import { createExecaShellAdapter } from '@kb-labs/release-core';
 
 export class MindCheck extends BaseCheckAdapter {
   id = 'mind' as const;
 
-  async run(cwd: string, timeoutMs: number): Promise<CheckResult> {
+  async run(cwd: string, timeoutMs: number, shell?: ShellApi): Promise<CheckResult> {
+    const shellApi = shell || createExecaShellAdapter();
     const start = Date.now();
 
     try {
@@ -24,28 +26,30 @@ export class MindCheck extends BaseCheckAdapter {
 
       // Check if kb CLI is available
       try {
-        await execa('kb', ['--version'], { cwd, timeout: 5000 });
+        const versionResult = await shellApi.exec('kb', ['--version'], { cwd, timeoutMs: 5000 });
+        if (!versionResult.ok) {
+          return this.createSkippedResult('kb CLI not installed');
+        }
       } catch {
         return this.createSkippedResult('kb CLI not installed');
       }
 
       // Run kb mind verify --json
-      const { stdout, exitCode } = await execa(
+      const result = await shellApi.exec(
         'kb',
         ['mind', 'verify', '--json'],
         {
           cwd,
-          timeout: timeoutMs,
-          reject: false,
+          timeoutMs,
         }
       );
 
       const timingMs = Date.now() - start;
 
       // Parse JSON output
-      let result: any;
+      let parsedResult: any;
       try {
-        result = JSON.parse(stdout || '{}');
+        parsedResult = JSON.parse(result.stdout || '{}');
       } catch {
         return this.createErrorResult(
           'PARSE_ERROR',
@@ -55,15 +59,15 @@ export class MindCheck extends BaseCheckAdapter {
       }
 
       // Check freshness and inconsistencies
-      const verifyOk = result.ok !== false;
-      const inconsistencies = result.inconsistencies || [];
-      const ok = exitCode === 0 && verifyOk && inconsistencies.length === 0;
+      const verifyOk = parsedResult.ok !== false;
+      const inconsistencies = parsedResult.inconsistencies || [];
+      const ok = result.ok && verifyOk && inconsistencies.length === 0;
 
       return {
         id: this.id,
         ok,
         details: {
-          verify: { ok: verifyOk, inconsistencies },
+          verify: { ok: verifyOk, inconsistencies: inconsistencies },
         },
         hint: ok
           ? undefined

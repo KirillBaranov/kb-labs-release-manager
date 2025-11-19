@@ -4,13 +4,15 @@
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { execa } from 'execa';
-import type { PackageVersion, ReleasePlan } from './types';
+import type { PackageVersion, ReleasePlan } from './types.js';
+import type { ShellApi } from '@kb-labs/plugin-contracts';
+import { createExecaShellAdapter } from './shell-adapter.js';
 
 export interface PublisherOptions {
   cwd: string;
   plan: ReleasePlan;
   dryRun?: boolean;
+  shell?: ShellApi;
 }
 
 export interface PublishingResult {
@@ -23,7 +25,8 @@ export interface PublishingResult {
  * Publish packages according to plan
  */
 export async function publishPackages(options: PublisherOptions): Promise<PublishingResult> {
-  const { cwd, plan, dryRun } = options;
+  const { cwd, plan, dryRun, shell } = options;
+  const shellApi = shell || createExecaShellAdapter();
   const result: PublishingResult = {
     published: [],
     skipped: [],
@@ -51,12 +54,12 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
 
   // Run build
   try {
-    const { exitCode } = await execa('pnpm', ['build'], {
+    const buildResult = await shellApi.exec('pnpm', ['build'], {
       cwd,
-      timeout: 300000,
+      timeoutMs: 300000,
     });
 
-    if (exitCode !== 0) {
+    if (!buildResult.ok) {
       result.errors.push('Build failed');
       return result;
     }
@@ -73,16 +76,16 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
       
       // Publish to npm if configured
       if (plan.packages.length > 0) {
-        const { exitCode } = await execa(
+        const publishResult = await shellApi.exec(
           'pnpm',
           ['publish', '--access', 'public', '--registry', registry],
           {
             cwd: pkg.path,
-            timeout: 60000,
+            timeoutMs: 60000,
           }
         );
 
-        if (exitCode === 0) {
+        if (publishResult.ok) {
           result.published.push(`${pkg.name}@${pkg.nextVersion}`);
         } else {
           result.errors.push(`Failed to publish ${pkg.name}`);

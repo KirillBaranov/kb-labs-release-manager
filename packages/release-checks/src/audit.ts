@@ -3,41 +3,45 @@
  * Calls: kb audit run --json
  */
 
-import { execa } from 'execa';
 import { BaseCheckAdapter } from './base.js';
 import type { CheckResult } from '@kb-labs/release-core';
+import type { ShellApi } from '@kb-labs/plugin-contracts';
+import { createExecaShellAdapter } from '@kb-labs/release-core';
 
 export class AuditCheck extends BaseCheckAdapter {
   id = 'audit' as const;
 
-  async run(cwd: string, timeoutMs: number): Promise<CheckResult> {
+  async run(cwd: string, timeoutMs: number, shell?: ShellApi): Promise<CheckResult> {
+    const shellApi = shell || createExecaShellAdapter();
     const start = Date.now();
 
     try {
       // Check if kb CLI is available
       try {
-        await execa('kb', ['--version'], { cwd, timeout: 5000 });
+        const versionResult = await shellApi.exec('kb', ['--version'], { cwd, timeoutMs: 5000 });
+        if (!versionResult.ok) {
+          return this.createSkippedResult('kb CLI not installed');
+        }
       } catch {
         return this.createSkippedResult('kb CLI not installed');
       }
 
       // Run kb audit run --json
-      const { stdout, exitCode } = await execa(
+      const result = await shellApi.exec(
         'kb',
         ['audit', 'run', '--json'],
         {
           cwd,
-          timeout: timeoutMs,
-          reject: false,
+          timeoutMs,
         }
       );
 
       const timingMs = Date.now() - start;
 
       // Parse JSON output
-      let result: any;
+      let parsedResult: any;
       try {
-        result = JSON.parse(stdout || '{}');
+        parsedResult = JSON.parse(result.stdout || '{}');
       } catch {
         return this.createErrorResult(
           'PARSE_ERROR',
@@ -47,19 +51,19 @@ export class AuditCheck extends BaseCheckAdapter {
       }
 
       // Check overall result
-      const overallOk = result.overall?.ok !== false;
-      const ok = exitCode === 0 && overallOk;
+      const overallOk = parsedResult.overall?.ok !== false;
+      const ok = result.ok && overallOk;
 
       return {
         id: this.id,
         ok,
         details: {
-          checks: result.checks,
-          overall: result.overall,
+          checks: parsedResult.checks,
+          overall: parsedResult.overall,
         },
         hint: ok
           ? undefined
-          : result.overall?.failReasons?.join(', ') || 'Audit checks failed',
+          : parsedResult.overall?.failReasons?.join(', ') || 'Audit checks failed',
         timingMs,
       };
     } catch (error: unknown) {

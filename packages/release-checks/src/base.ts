@@ -3,16 +3,17 @@
  */
 
 import type { CheckResult, CheckId } from '@kb-labs/release-core';
+import type { ShellApi } from '@kb-labs/plugin-contracts';
 
 export interface CheckAdapter {
   id: CheckId;
-  run(cwd: string, timeoutMs: number): Promise<CheckResult>;
+  run(cwd: string, timeoutMs: number, shell?: ShellApi): Promise<CheckResult>;
 }
 
 export abstract class BaseCheckAdapter implements CheckAdapter {
   abstract id: CheckId;
 
-  abstract run(cwd: string, timeoutMs: number): Promise<CheckResult>;
+  abstract run(cwd: string, timeoutMs: number, shell?: ShellApi): Promise<CheckResult>;
 
   protected createErrorResult(
     code: string,

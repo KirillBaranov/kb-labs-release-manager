@@ -1,3 +1,9 @@
 {
-  "extends": "@kb-labs/devkit/tsconfig/node.json"
+  "extends": [
+    "@kb-labs/devkit/tsconfig/node.json",
+    "./tsconfig.paths.json"
+  ],
+  "compilerOptions": {
+    "baseUrl": "."
+  }
 }

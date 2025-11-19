@@ -27,7 +27,7 @@ export async function loadReleaseConfig(
   const bundle = await loadBundle({
     cwd: opts.cwd || process.cwd(),
     product: 'release',
-    profileKey: opts.profileKey || 'default',
+    profileId: opts.profileKey || 'default',
     cli: opts.cli,
     validate: 'warn', // Validate with warnings
   });

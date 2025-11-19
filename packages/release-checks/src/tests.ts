@@ -3,41 +3,45 @@
  * Calls: vitest run --reporter=json
  */
 
-import { execa } from 'execa';
 import { BaseCheckAdapter } from './base.js';
 import type { CheckResult } from '@kb-labs/release-core';
+import type { ShellApi } from '@kb-labs/plugin-contracts';
+import { createExecaShellAdapter } from '@kb-labs/release-core';
 
 export class TestsCheck extends BaseCheckAdapter {
   id = 'tests' as const;
 
-  async run(cwd: string, timeoutMs: number): Promise<CheckResult> {
+  async run(cwd: string, timeoutMs: number, shell?: ShellApi): Promise<CheckResult> {
+    const shellApi = shell || createExecaShellAdapter();
     const start = Date.now();
 
     try {
       // Check if vitest is available
       try {
-        await execa('vitest', ['--version'], { cwd, timeout: 5000 });
+        const versionResult = await shellApi.exec('vitest', ['--version'], { cwd, timeoutMs: 5000 });
+        if (!versionResult.ok) {
+          return this.createSkippedResult('vitest not installed');
+        }
       } catch {
         return this.createSkippedResult('vitest not installed');
       }
 
       // Run vitest with JSON reporter
-      const { stdout, exitCode } = await execa(
+      const result = await shellApi.exec(
         'vitest',
         ['run', '--reporter=json'],
         {
           cwd,
-          timeout: timeoutMs,
-          reject: false,
+          timeoutMs,
         }
       );
 
       const timingMs = Date.now() - start;
 
       // Parse JSON output
-      let result: any;
+      let parsedResult: any;
       try {
-        result = JSON.parse(stdout || '{}');
+        parsedResult = JSON.parse(result.stdout || '{}');
       } catch {
         return this.createErrorResult(
           'PARSE_ERROR',
@@ -47,10 +51,10 @@ export class TestsCheck extends BaseCheckAdapter {
       }
 
       // Extract test results
-      const numFailedTests = result.numFailedTests || 0;
-      const numPassedTests = result.numPassedTests || 0;
-      const numTotalTests = result.numTotalTests || 0;
-      const ok = exitCode === 0 && numFailedTests === 0;
+      const numFailedTests = parsedResult.numFailedTests || 0;
+      const numPassedTests = parsedResult.numPassedTests || 0;
+      const numTotalTests = parsedResult.numTotalTests || 0;
+      const ok = result.ok && numFailedTests === 0;
 
       return {
         id: this.id,

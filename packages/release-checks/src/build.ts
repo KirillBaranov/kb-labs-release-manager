@@ -2,16 +2,18 @@
  * Build check adapter
  */
 
-import { execa } from 'execa';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BaseCheckAdapter } from './base.js';
 import type { CheckResult } from '@kb-labs/release-core';
+import type { ShellApi } from '@kb-labs/plugin-contracts';
+import { createExecaShellAdapter } from '@kb-labs/release-core';
 
 export class BuildCheck extends BaseCheckAdapter {
   id = 'build' as const;
 
-  async run(cwd: string, timeoutMs: number): Promise<CheckResult> {
+  async run(cwd: string, timeoutMs: number, shell?: ShellApi): Promise<CheckResult> {
+    const shellApi = shell || createExecaShellAdapter();
     const start = Date.now();
 
     try {
@@ -26,20 +28,19 @@ export class BuildCheck extends BaseCheckAdapter {
         return this.createSkippedResult('no build command');
       }
       
-      const { exitCode } = await execa(cmd, args, {
+      const result = await shellApi.exec(cmd, args, {
         cwd,
-        timeout: timeoutMs,
-        reject: false,
+        timeoutMs,
       });
 
       const timingMs = Date.now() - start;
-      const ok = exitCode === 0;
+      const ok = result.ok;
 
       return {
         id: this.id,
         ok,
         details: {
-          exitCode,
+          exitCode: result.exitCode,
           tool: this.detectBuildToolName(cwd),
         },
         hint: ok
