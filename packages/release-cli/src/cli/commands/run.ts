@@ -5,7 +5,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
-import { formatTiming } from '@kb-labs/shared-cli-ui';
 import {
   loadReleaseConfig,
   planRelease,
@@ -226,36 +225,38 @@ export const runCommand = defineCommand<ReleaseRunFlags, ReleaseRunResult>({
       if (!ctx.output) {
         throw new Error('Output not available');
       }
-      
-      // Pretty print summary
-      const lines: string[] = [];
-      
-      if (report.result.ok) {
-        lines.push('Release completed successfully');
-      } else {
-        lines.push('Release failed');
-      }
-      lines.push('');
+
+      const sections: Array<{ header?: string; items: string[] }> = [];
 
       if (report.result.published && report.result.published.length > 0) {
-        lines.push('Published packages:');
+        const publishedItems: string[] = [];
         for (const pkg of report.result.published) {
-          lines.push(`  ${ctx.output.ui.colors.success(ctx.output.ui.symbols.success)} ${pkg}`);
+          publishedItems.push(`${ctx.output.ui.symbols.success} ${pkg}`);
         }
-        lines.push('');
+        sections.push({
+          header: 'Published packages',
+          items: publishedItems,
+        });
       }
 
       if (report.result.errors && report.result.errors.length > 0) {
-        lines.push('Errors:');
+        const errorItems: string[] = [];
         for (const error of report.result.errors) {
-          lines.push(`  ${ctx.output.ui.colors.error('✗')} ${error}`);
+          errorItems.push(`${ctx.output.ui.symbols.error} ${error}`);
         }
-        lines.push('');
+        sections.push({
+          header: 'Errors',
+          items: errorItems,
+        });
       }
 
-      lines.push(`Duration: ${formatTiming(report.result.timingMs)}`);
-
-      const outputText = ctx.output.ui.box('Release Summary', lines);
+      const status = report.result.ok ? 'success' : 'error';
+      const outputText = ctx.output.ui.sideBox({
+        title: 'Release Summary',
+        sections,
+        status,
+        timing: report.result.timingMs,
+      });
       ctx.output.write(outputText);
     }
 

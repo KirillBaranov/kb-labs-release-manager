@@ -5,7 +5,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
-import { keyValue } from '@kb-labs/shared-cli-ui';
 import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-core';
 import { findRepoRoot } from '../../shared/utils.js';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
@@ -112,31 +111,42 @@ export const planCommand = defineCommand<ReleasePlanFlags, ReleasePlanResult>({
       if (!ctx.output) {
         throw new Error('Output not available');
       }
-      
-      const lines: string[] = [];
-      lines.push('Release Plan:');
-      lines.push('');
-      const summary: Record<string, string> = {
-        'Strategy': plan.strategy,
-        'Registry': plan.registry,
-        'Packages': plan.packages.length.toString(),
-      };
-      lines.push(...keyValue(summary));
-      lines.push('');
-      
+
+      const sections: Array<{ header?: string; items: string[] }> = [
+        {
+          header: 'Summary',
+          items: [
+            `Strategy: ${plan.strategy}`,
+            `Registry: ${plan.registry}`,
+            `Packages: ${plan.packages.length}`,
+          ],
+        },
+      ];
+
       if (plan.packages.length > 0) {
-        lines.push('Packages to release:');
+        const packageItems: string[] = [];
         for (const pkg of plan.packages) {
           const versionInfo = pkg.currentVersion && pkg.nextVersion
             ? `${pkg.currentVersion} → ${pkg.nextVersion}`
             : pkg.nextVersion || 'new';
-          lines.push(`  ${ctx.output.ui.colors.success('✓')} ${pkg.name}: ${versionInfo}`);
+          packageItems.push(`${ctx.output.ui.symbols.success} ${pkg.name}: ${versionInfo}`);
         }
+        sections.push({
+          header: 'Packages to release',
+          items: packageItems,
+        });
       } else {
-        lines.push('No packages to release');
+        sections.push({
+          items: ['No packages to release'],
+        });
       }
 
-      const outputText = ctx.output.ui.box('Release Plan', lines);
+      const outputText = ctx.output.ui.sideBox({
+        title: 'Release Plan',
+        sections,
+        status: 'success',
+        timing: ctx.tracker.total(),
+      });
       ctx.output.write(outputText);
     }
 

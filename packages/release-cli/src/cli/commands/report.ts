@@ -56,22 +56,36 @@ export const reportCommand = defineCommand<ReleaseReportFlags, ReleaseReportResu
         if (!ctx.output) {
           throw new Error('Output not available');
         }
-        
-        // Pretty print summary
-        const lines: string[] = [];
-        lines.push(`Timestamp: ${report.ts}`);
-        lines.push(`Stage: ${report.stage}`);
-        lines.push(`Result: ${report.result.ok ? 'SUCCESS' : 'FAILED'}`);
-        
+
+        const sections: Array<{ header?: string; items: string[] }> = [
+          {
+            header: 'Summary',
+            items: [
+              `Timestamp: ${report.ts}`,
+              `Stage: ${report.stage}`,
+              `Result: ${report.result.ok ? 'SUCCESS' : 'FAILED'}`,
+            ],
+          },
+        ];
+
         if (report.result.errors && report.result.errors.length > 0) {
-          lines.push('');
-          lines.push('Errors:');
+          const errorItems: string[] = [];
           for (const error of report.result.errors) {
-            lines.push(`  - ${error}`);
+            errorItems.push(error);
           }
+          sections.push({
+            header: 'Errors',
+            items: errorItems,
+          });
         }
 
-        const outputText = ctx.output.ui.box('Release Report', lines);
+        const status = report.result.ok ? 'success' : 'error';
+        const outputText = ctx.output.ui.sideBox({
+          title: 'Release Report',
+          sections,
+          status,
+          timing: ctx.tracker.total(),
+        });
         ctx.output.write(outputText);
       }
 

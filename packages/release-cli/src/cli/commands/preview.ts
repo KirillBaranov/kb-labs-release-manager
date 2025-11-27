@@ -95,33 +95,42 @@ export const previewCommand = defineCommand<ReleasePreviewFlags, ReleasePreviewR
       if (!ctx.output) {
         throw new Error('Output not available');
       }
-      
-      const lines: string[] = [];
-      lines.push('Release Preview (dry-run):');
-      lines.push('');
-      
+
+      const sections: Array<{ header?: string; items: string[] }> = [];
+
       if (plan.packages.length === 0) {
-        lines.push('No packages to release.');
+        sections.push({
+          items: ['No packages to release.'],
+        });
       } else {
-        const packageDisplay: Record<string, string> = {};
+        const packageItems: string[] = [];
         for (const pkg of plan.packages) {
           const versionInfo = pkg.currentVersion && pkg.nextVersion
             ? `${pkg.currentVersion} → ${pkg.nextVersion}`
             : pkg.nextVersion || 'new';
-          packageDisplay[pkg.name] = `${versionInfo} [${pkg.bump}]`;
+          packageItems.push(`${pkg.name}: ${versionInfo} [${pkg.bump}]`);
         }
-        lines.push(...keyValue(packageDisplay));
+        sections.push({
+          header: 'Packages',
+          items: packageItems,
+        });
       }
 
-      lines.push('');
-      const summary: Record<string, string> = {
-        'Strategy': plan.strategy,
-        'Registry': plan.registry,
-        'Rollback': plan.rollbackEnabled ? 'enabled' : 'disabled',
-      };
-      lines.push(...keyValue(summary));
+      sections.push({
+        header: 'Summary',
+        items: [
+          `Strategy: ${plan.strategy}`,
+          `Registry: ${plan.registry}`,
+          `Rollback: ${plan.rollbackEnabled ? 'enabled' : 'disabled'}`,
+        ],
+      });
 
-      const outputText = ctx.output.ui.box('Release Preview', lines);
+      const outputText = ctx.output.ui.sideBox({
+        title: 'Release Preview',
+        sections,
+        status: 'info',
+        timing: ctx.tracker.total(),
+      });
       ctx.output.write(outputText);
     }
 

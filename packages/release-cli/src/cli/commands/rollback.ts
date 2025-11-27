@@ -47,8 +47,19 @@ export const rollbackCommand = defineCommand<ReleaseRollbackFlags, ReleaseRollba
       if (!ctx.output) {
         throw new Error('Output not available');
       }
-      
-      const outputText = ctx.output.ui.box('Rollback', ['Release state restored from backup snapshot']);
+
+      const outputText = ctx.output.ui.sideBox({
+        title: 'Rollback',
+        sections: [
+          {
+            items: [
+              `${ctx.output.ui.symbols.success} ${ctx.output.ui.colors.success('Release state restored from backup snapshot')}`,
+            ],
+          },
+        ],
+        status: 'success',
+        timing: ctx.tracker.total(),
+      });
       ctx.output.write(outputText);
     }
 

@@ -162,27 +162,36 @@ export const verifyCommand = defineCommand<ReleaseVerifyFlags, ReleaseVerifyResu
       if (!ctx.output) {
         throw new Error('Output not available');
       }
-      
-      const lines: string[] = [];
-      lines.push(`Release Verification: ${isValid ? ctx.output.ui.colors.info('✓ PASSED') : ctx.output.ui.colors.error('✗ FAILED')}`);
-      lines.push('');
-      
-      const status: Record<string, string> = {
-        'Has Packages': hasPackages ? 'Yes' : 'No',
-        'Has Breaking Changes': hasBreaking ? 'Yes' : 'No',
-        'Status': isValid ? 'Valid for release' : 'Blocked',
-      };
-      lines.push(...keyValue(status));
+
+      const sections: Array<{ header?: string; items: string[] }> = [
+        {
+          header: 'Status',
+          items: [
+            `Has Packages: ${hasPackages ? 'Yes' : 'No'}`,
+            `Has Breaking Changes: ${hasBreaking ? 'Yes' : 'No'}`,
+            `Result: ${isValid ? 'Valid for release' : 'Blocked'}`,
+          ],
+        },
+      ];
 
       if (issues.length > 0) {
-        lines.push('');
-        lines.push('Issues:');
+        const issueItems: string[] = [];
         for (const issue of issues) {
-          lines.push(`  - ${ctx.output.ui.colors.error(issue)}`);
+          issueItems.push(`${ctx.output.ui.symbols.error} ${issue}`);
         }
+        sections.push({
+          header: 'Issues',
+          items: issueItems,
+        });
       }
 
-      const outputText = ctx.output.ui.box('Release Verification', lines);
+      const status = isValid ? 'success' : 'error';
+      const outputText = ctx.output.ui.sideBox({
+        title: 'Release Verification',
+        sections,
+        status,
+        timing: ctx.tracker.total(),
+      });
       ctx.output.write(outputText);
     }
 

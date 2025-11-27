@@ -6,7 +6,6 @@
 import { join } from 'node:path';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
-import { keyValue } from '@kb-labs/shared-cli-ui';
 import { loadReleaseConfig } from '@kb-labs/release-core';
 import {
   resolveGitRange,
@@ -237,21 +236,36 @@ export const changelogCommand = defineCommand<ReleaseChangelogFlags, ReleaseChan
       if (!ctx.output) {
         throw new Error('Output not available');
       }
-      
-      const lines: string[] = [];
-      lines.push('Changelog Generated:');
-      lines.push('');
 
-      const stats: Record<string, string> = {
-        'Range': `${range.from}..${range.to}`,
-        'Commits': `${enhancedChanges.length}`,
-        'Format': format === 'both' ? 'Markdown + JSON' : format,
-        'Level': level,
-        'Output': format.includes('md') && format.includes('json') ? '.kb/release/CHANGELOG.md + release.manifest.json' : format === 'md' ? '.kb/release/CHANGELOG.md' : '.kb/release/release.manifest.json',
-      };
-      lines.push(...keyValue(stats));
+      const formatLabel = format === 'both' ? 'Markdown + JSON' : format;
+      const outputLabel = format.includes('md') && format.includes('json')
+        ? '.kb/release/CHANGELOG.md + release.manifest.json'
+        : format === 'md'
+        ? '.kb/release/CHANGELOG.md'
+        : '.kb/release/release.manifest.json';
 
-      const outputText = ctx.output.ui.box('Changelog', lines);
+      const sections: Array<{ header?: string; items: string[] }> = [
+        {
+          header: 'Summary',
+          items: [
+            `Range: ${range.from}..${range.to}`,
+            `Commits: ${enhancedChanges.length}`,
+            `Format: ${formatLabel}`,
+            `Level: ${level}`,
+          ],
+        },
+        {
+          header: 'Output',
+          items: [outputLabel],
+        },
+      ];
+
+      const outputText = ctx.output.ui.sideBox({
+        title: 'Changelog Generated',
+        sections,
+        status: 'success',
+        timing: ctx.tracker.total(),
+      });
       ctx.output.write(outputText);
     }
 

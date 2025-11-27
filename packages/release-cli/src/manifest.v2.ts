@@ -13,7 +13,7 @@ type CliCommands = NonNullable<ManifestV2['cli']>['commands'];
 const commands: CliCommands = [
   {
     manifestVersion: '1.0',
-    id: 'release:plan',
+    id: 'plan',
     group: 'release',
     describe: 'Analyze changes and prepare release plan',
     longDescription: 'Detect modified packages and compute version bumps based on changes',
@@ -38,7 +38,7 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
-    id: 'release:run',
+    id: 'run',
     group: 'release',
     describe: 'Execute release process (plan, check, publish)',
     longDescription: 'Run full release: plan versions, run checks, publish packages',
@@ -59,7 +59,7 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
-    id: 'release:rollback',
+    id: 'rollback',
     group: 'release',
     describe: 'Rollback last release',
     longDescription: 'Restore workspace state from backup snapshot',
@@ -69,7 +69,7 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
-    id: 'release:report',
+    id: 'report',
     group: 'release',
     describe: 'Show last release report',
     longDescription: 'Display the most recent release execution report',
@@ -79,7 +79,7 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
-    id: 'release:changelog',
+    id: 'changelog',
     group: 'release',
     describe: 'Generate changelog from conventional commits',
     longDescription: 'Parse git history and generate changelog with conventional commits support',
@@ -121,7 +121,7 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
-    id: 'release:preview',
+    id: 'preview',
     group: 'release',
     describe: 'Preview release plan without making changes',
     longDescription: 'Show release plan with bump table and changelog preview',
@@ -131,7 +131,7 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
-    id: 'release:verify',
+    id: 'verify',
     group: 'release',
     describe: 'Validate release readiness',
     longDescription: 'Check if repo has substantial changes for release',
