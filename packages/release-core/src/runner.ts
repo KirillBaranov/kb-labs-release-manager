@@ -8,7 +8,7 @@ import type {
   ReleaseResult,
   ReleaseStage,
   ReleaseChecks,
-} from './types.js';
+} from './types';
 
 export interface RunnerOptions {
   config: ReleaseConfig;

@@ -4,9 +4,9 @@
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { PackageVersion, ReleasePlan } from './types.js';
+import type { PackageVersion, ReleasePlan } from './types';
 import type { ShellApi } from '@kb-labs/plugin-contracts';
-import { createExecaShellAdapter } from './shell-adapter.js';
+import { createExecaShellAdapter } from './shell-adapter';
 
 export interface PublisherOptions {
   cwd: string;

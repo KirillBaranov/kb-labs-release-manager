@@ -39,25 +39,20 @@
   },
   "dependencies": {
     "@kb-labs/plugin-contracts": "link:../../../kb-labs-plugin/packages/plugin-contracts",
-    "@kb-labs/core": "link:../../../kb-labs-core",
-    "@kb-labs/core-bundle": "link:../../../kb-labs-core/packages/bundle",
-    "@kb-labs/changelog": "link:../changelog",
+    "@kb-labs/core-bundle": "link:../../../kb-labs-core/packages/core-bundle",
     "execa": "^8.0.0",
-    "fs-extra": "^11.0.0",
     "globby": "^11.0.0",
-    "semver": "^7.6.0",
-    "simple-git": "^3.25.0",
-    "yaml": "^2.8.0"
+    "semver": "^7.6.3",
+    "simple-git": "^3.25.0"
   },
   "devDependencies": {
     "@kb-labs/devkit": "link:../../../kb-labs-devkit",
     "@types/fs-extra": "^11.0.0",
-    "@types/node": "^24.7.0",
-    "@types/semver": "^7.5.0",
-    "rimraf": "^6",
-    "tsup": "^8",
-    "typescript": "^5",
-    "vitest": "^3"
+    "@types/node": "^24.3.3",
+    "@types/semver": "^7.5.8",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }
-

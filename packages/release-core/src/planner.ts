@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import semver from 'semver';
 import globby from 'globby';
-import type { PackageVersion, VersionBump, ReleaseConfig, ReleasePlan } from './types.js';
+import type { PackageVersion, VersionBump, ReleaseConfig, ReleasePlan } from './types';
 
 export interface PlannerOptions {
   cwd: string;

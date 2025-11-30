@@ -5,7 +5,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import type { ReleasePlan, PackageVersion } from './types.js';
+import type { ReleasePlan, PackageVersion } from './types';
 
 export interface RollbackSnapshot {
   ts: string;

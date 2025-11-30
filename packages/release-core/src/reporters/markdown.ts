@@ -2,7 +2,7 @@
  * Markdown reporter for release reports
  */
 
-import type { ReleaseReport } from '../types.js';
+import type { ReleaseReport } from '../types';
 
 export function renderMarkdown(report: ReleaseReport): string {
   const lines: string[] = [];
