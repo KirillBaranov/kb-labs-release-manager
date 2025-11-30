@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ReleasePlanSchema } from '../../contracts/release.schema.js';
-import { findRepoRoot } from '../../shared/utils.js';
+import { ReleasePlanSchema } from '../../contracts/release.schema';
+import { findRepoRoot } from '../../shared/utils';
 
 type HandlerContext = {
   cwd?: string;

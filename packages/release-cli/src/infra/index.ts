@@ -1,3 +1,3 @@
 // Infrastructure adapters for release plugin
-export * from './analytics/index.js';
+export * from './analytics/index';
 
