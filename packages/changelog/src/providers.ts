@@ -4,8 +4,8 @@
  */
 
 import simpleGit from 'simple-git';
-import { parseGitUrl } from './git-range.js';
-import type { Change, GitProvider } from './types.js';
+import { parseGitUrl } from './git-range';
+import type { Change, GitProvider } from './types';
 
 /**
  * Auto-detect git provider from remote

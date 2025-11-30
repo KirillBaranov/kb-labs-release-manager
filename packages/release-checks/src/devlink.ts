@@ -3,7 +3,7 @@
  * Calls: kb devlink check --json
  */
 
-import { BaseCheckAdapter } from './base.js';
+import { BaseCheckAdapter } from './base';
 import type { CheckResult } from '@kb-labs/release-core';
 import type { ShellApi } from '@kb-labs/plugin-contracts';
 import { createExecaShellAdapter } from '@kb-labs/release-core';

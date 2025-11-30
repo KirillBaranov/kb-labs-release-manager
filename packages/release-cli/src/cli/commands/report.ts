@@ -4,10 +4,10 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
+import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
 import type { ReleaseReport } from '@kb-labs/release-core';
-import { findRepoRoot } from '../../shared/utils.js';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
+import { findRepoRoot } from '../../shared/utils';
+import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type ReleaseReportFlags = {
   json: { type: 'boolean'; description?: string; default?: boolean };

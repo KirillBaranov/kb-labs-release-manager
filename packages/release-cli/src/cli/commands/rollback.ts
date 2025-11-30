@@ -2,10 +2,10 @@
  * Release rollback command
  */
 
-import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
+import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
 import { restoreSnapshot } from '@kb-labs/release-core';
-import { findRepoRoot } from '../../shared/utils.js';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
+import { findRepoRoot } from '../../shared/utils';
+import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type ReleaseRollbackFlags = {
   json: { type: 'boolean'; description?: string; default?: boolean };

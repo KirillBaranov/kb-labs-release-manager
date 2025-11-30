@@ -3,7 +3,7 @@
  */
 
 import simpleGit from 'simple-git';
-import type { GitRange } from './types.js';
+import type { GitRange } from './types';
 
 /**
  * Resolve git range from various sources (tags, refs, dates)

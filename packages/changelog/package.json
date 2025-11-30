@@ -39,17 +39,16 @@
   },
   "dependencies": {
     "conventional-commits-parser": "^4.0.0",
-    "semver": "^7.6.0",
+    "semver": "^7.6.3",
     "simple-git": "^3.25.0"
   },
   "devDependencies": {
     "@kb-labs/devkit": "link:../../../kb-labs-devkit",
-    "@types/node": "^24.7.0",
-    "@types/semver": "^7.5.0",
-    "rimraf": "^6",
-    "tsup": "^8",
-    "typescript": "^5",
-    "vitest": "^3"
+    "@types/node": "^24.3.3",
+    "@types/semver": "^7.5.8",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }
-

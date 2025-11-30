@@ -3,12 +3,12 @@
  * Validate release readiness
  */
 
-import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
+import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
 import { keyValue } from '@kb-labs/shared-cli-ui';
 import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-core';
 import { resolveGitRange, parseCommits } from '@kb-labs/changelog';
-import { findRepoRoot } from '../../shared/utils.js';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
+import { findRepoRoot } from '../../shared/utils';
+import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type ReleaseVerifyFlags = {
   scope: { type: 'string'; description?: string };

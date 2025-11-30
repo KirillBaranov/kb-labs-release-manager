@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 import { writeFile, mkdir } from 'node:fs/promises';
-import { defineCommand, type CommandResult } from '@kb-labs/cli-command-kit';
+import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
 import { loadReleaseConfig } from '@kb-labs/release-core';
 import {
   resolveGitRange,
@@ -18,8 +18,8 @@ import {
   type ReleaseManifest,
   type PackageRelease,
 } from '@kb-labs/changelog';
-import { findRepoRoot } from '../../shared/utils.js';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
+import { findRepoRoot } from '../../shared/utils';
+import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type ReleaseChangelogFlags = {
   scope: { type: 'string'; description?: string };
