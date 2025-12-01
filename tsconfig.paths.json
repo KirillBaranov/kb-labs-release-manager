@@ -3,12 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@kb-labs/changelog": [
-        "packages/changelog/src/index.ts"
-      ],
-      "@kb-labs/changelog/*": [
-        "packages/changelog/src/*"
-      ],
       "@kb-labs/core": [
         "../kb-labs-core/src/index.ts"
       ],
@@ -28,34 +22,40 @@
         "../kb-labs-plugin/packages/plugin-contracts/src/*"
       ],
       "@kb-labs/plugin-manifest": [
-        "../kb-labs-plugin/packages/manifest/src/index.ts"
+        "../kb-labs-plugin/packages/plugin-manifest/src/index.ts"
       ],
       "@kb-labs/plugin-manifest/*": [
-        "../kb-labs-plugin/packages/manifest/src/*"
+        "../kb-labs-plugin/packages/plugin-manifest/src/*"
       ],
-      "@kb-labs/release-checks": [
-        "packages/release-checks/src/index.ts"
+      "@kb-labs/release-manager-changelog": [
+        "packages/release-manager-changelog/src/index.ts"
       ],
-      "@kb-labs/release-checks/*": [
-        "packages/release-checks/src/*"
+      "@kb-labs/release-manager-changelog/*": [
+        "packages/release-manager-changelog/src/*"
       ],
-      "@kb-labs/release-contracts": [
-        "packages/release-contracts/src/index.ts"
+      "@kb-labs/release-manager-checks": [
+        "packages/release-manager-checks/src/index.ts"
       ],
-      "@kb-labs/release-contracts/*": [
-        "packages/release-contracts/src/*"
+      "@kb-labs/release-manager-checks/*": [
+        "packages/release-manager-checks/src/*"
       ],
-      "@kb-labs/release-core": [
-        "packages/release-core/src/index.ts"
+      "@kb-labs/release-manager-contracts": [
+        "packages/release-manager-contracts/src/index.ts"
       ],
-      "@kb-labs/release-core/*": [
-        "packages/release-core/src/*"
+      "@kb-labs/release-manager-contracts/*": [
+        "packages/release-manager-contracts/src/*"
+      ],
+      "@kb-labs/release-manager-core": [
+        "packages/release-manager-core/src/index.ts"
+      ],
+      "@kb-labs/release-manager-core/*": [
+        "packages/release-manager-core/src/*"
       ],
       "@kb-labs/shared-cli-ui": [
-        "../kb-labs-shared/packages/cli-ui/src/index.ts"
+        "../kb-labs-shared/packages/shared-cli-ui/src/index.ts"
       ],
       "@kb-labs/shared-cli-ui/*": [
-        "../kb-labs-shared/packages/cli-ui/src/*"
+        "../kb-labs-shared/packages/shared-cli-ui/src/*"
       ],
       "@kb-labs/shared-command-kit": [
         "../kb-labs-shared/packages/shared-command-kit/src/index.ts"
