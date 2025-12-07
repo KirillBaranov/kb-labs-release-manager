@@ -36,7 +36,7 @@ type ReleaseRunResult = CommandResult & {
   report?: ReleaseReport;
 };
 
-export const runCommand = defineCommand<ReleaseRunFlags, ReleaseRunResult>({
+export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>({
   name: 'release:run',
   flags: {
     scope: {

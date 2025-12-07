@@ -1,6 +1,6 @@
 {
   "name": "@kb-labs/release-manager-changelog",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "KB Labs Release Manager - conventional commits parser and changelog generator",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,6 +38,7 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
+    "@kb-labs/core-platform": "link:../../../kb-labs-core/packages/core-platform",
     "conventional-commits-parser": "^4.0.0",
     "semver": "^7.6.3",
     "simple-git": "^3.25.0"

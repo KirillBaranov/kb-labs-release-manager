@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 import { writeFile, mkdir } from 'node:fs/promises';
-import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
+import { defineCommand, type CommandResult, usePlatform } from '@kb-labs/shared-command-kit';
 import { loadReleaseConfig } from '@kb-labs/release-manager-core';
 import {
   resolveGitRange,
@@ -14,6 +14,7 @@ import {
   createReleaseManifest,
   detectProvider,
   enhanceChangeWithLinks,
+  formatPackageWithLLM,
   type Change,
   type ReleaseManifest,
   type PackageRelease,
@@ -79,7 +80,7 @@ function formatSimpleMarkdown(changes: Change[], level: string, locale: 'en' | '
   return lines.join('\n');
 }
 
-export const changelogCommand = defineCommand<ReleaseChangelogFlags, ReleaseChangelogResult>({
+export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, ReleaseChangelogResult>({
   name: 'release:changelog',
   flags: {
     scope: {
@@ -132,9 +133,12 @@ export const changelogCommand = defineCommand<ReleaseChangelogFlags, ReleaseChan
     includeFlags: true,
   },
   async handler(ctx, argv, flags) {
+    // Use global platform singleton (clean approach with usePlatform helper)
+    const platform = usePlatform();
+
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
-    
+
     ctx.tracker.checkpoint('config');
 
     // Load configuration
@@ -192,7 +196,19 @@ export const changelogCommand = defineCommand<ReleaseChangelogFlags, ReleaseChan
     let jsonManifest: ReleaseManifest | null = null;
 
     if (format === 'md' || format === 'both') {
-      markdown = formatSimpleMarkdown(enhancedChanges, level, locale);
+      // Create synthetic PackageRelease from changes
+      const syntheticRelease: PackageRelease = {
+        name: 'Changelog',
+        prev: range.from.substring(0, 7),
+        next: range.to.substring(0, 7),
+        bump: 'none',
+        reason: 'manual',
+        breaking: enhancedChanges.filter(c => c.breaking).flatMap(c => c.breaking!),
+        changes: enhancedChanges,
+      };
+
+      // Use LLM formatter with graceful degradation
+      markdown = await formatPackageWithLLM(platform, syntheticRelease, locale);
     }
 
     if (format === 'json' || format === 'both') {

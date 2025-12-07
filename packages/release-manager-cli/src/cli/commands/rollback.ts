@@ -15,7 +15,7 @@ type ReleaseRollbackResult = CommandResult & {
   message?: string;
 };
 
-export const rollbackCommand = defineCommand<ReleaseRollbackFlags, ReleaseRollbackResult>({
+export const rollbackCommand = defineCommand<any, ReleaseRollbackFlags, ReleaseRollbackResult>({
   name: 'release:rollback',
   flags: {
     json: {

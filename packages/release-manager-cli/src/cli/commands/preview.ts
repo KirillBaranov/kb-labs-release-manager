@@ -24,7 +24,7 @@ type ReleasePreviewResult = CommandResult & {
   };
 };
 
-export const previewCommand = defineCommand<ReleasePreviewFlags, ReleasePreviewResult>({
+export const previewCommand = defineCommand<any, ReleasePreviewFlags, ReleasePreviewResult>({
   name: 'release:preview',
   flags: {
     scope: {

@@ -28,7 +28,7 @@ type ReleaseVerifyResult = CommandResult & {
   breakingDetected?: boolean;
 };
 
-export const verifyCommand = defineCommand<ReleaseVerifyFlags, ReleaseVerifyResult>({
+export const verifyCommand = defineCommand<any, ReleaseVerifyFlags, ReleaseVerifyResult>({
   name: 'release:verify',
   flags: {
     scope: {

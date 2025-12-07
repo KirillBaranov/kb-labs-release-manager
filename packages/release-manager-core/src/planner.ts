@@ -8,6 +8,7 @@ import simpleGit from 'simple-git';
 import semver from 'semver';
 import globby from 'globby';
 import type { PackageVersion, VersionBump, ReleaseConfig, ReleasePlan } from './types';
+import { applyVersionStrategy, type VersionStrategy } from './versioning-strategies';
 
 export interface PlannerOptions {
   cwd: string;
@@ -30,7 +31,7 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
   const modifiedPackages = await detectModifiedPackages(git, packages);
 
   // Compute version bumps
-  const planPackages: PackageVersion[] = [];
+  let planPackages: PackageVersion[] = [];
   for (const pkg of modifiedPackages) {
     const bump = bumpOverride || config.bump || 'auto';
     const nextVersion = await computeNextVersion(
@@ -39,13 +40,22 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
       bump,
       git
     );
-    
+
     planPackages.push({
       ...pkg,
       nextVersion,
       bump: bump === 'auto' ? detectBumpType(pkg.currentVersion, nextVersion) : bump,
     });
   }
+
+  // Apply versioning strategy (lockstep/independent/adaptive)
+  const bumpStrategy = config.changelog?.bumpStrategy || 'independent';
+  const versionStrategy = mapBumpStrategyToVersionStrategy(bumpStrategy);
+
+  planPackages = applyVersionStrategy(planPackages, {
+    strategy: versionStrategy,
+    umbrellaPath: scope,
+  });
 
   return {
     packages: planPackages,
@@ -55,26 +65,53 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
   };
 }
 
+/**
+ * Map changelog.bumpStrategy to VersionStrategy
+ */
+function mapBumpStrategyToVersionStrategy(
+  bumpStrategy: 'independent' | 'ripple' | 'lockstep'
+): VersionStrategy {
+  if (bumpStrategy === 'lockstep') return 'lockstep';
+  if (bumpStrategy === 'ripple') return 'adaptive';
+  return 'independent';
+}
+
 async function discoverPackages(cwd: string, scope?: string): Promise<PackageVersion[]> {
   const packages: PackageVersion[] = [];
 
-  // Find package.json files
-  const pattern = scope 
+  // Read config for customization (optional)
+  const config = await readReleaseConfig(cwd);
+
+  // Find package.json files - support nested monorepos
+  const pattern = scope
     ? `${scope}/**/package.json`
-    : 'packages/*/package.json';
-  
+    : (config.release?.packagesPattern || '**/package.json');
+
   const packageJsonPaths = await globby(pattern, {
     cwd,
     absolute: true,
     onlyFiles: true,
+    ignore: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.git/**',
+      '**/.*/**', // hidden folders
+      ...(config.release?.ignorePatterns || []),
+    ],
   });
 
   for (const packageJsonPath of packageJsonPaths) {
     const packagePath = join(packageJsonPath, '..');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-    
-    // Skip private packages for release unless configured
-    if (packageJson.private) {
+
+    // Skip root package.json unless configured
+    if (packageJsonPath === join(cwd, 'package.json') && !config.release?.includeRoot) {
+      continue;
+    }
+
+    // Skip private packages unless configured
+    if (packageJson.private && !config.release?.includePrivate) {
       continue;
     }
 
@@ -84,11 +121,24 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
       currentVersion: packageJson.version,
       nextVersion: packageJson.version,
       bump: 'auto',
-      isPublished: true,
+      isPublished: !packageJson.private,
     });
   }
 
   return packages;
+}
+
+/**
+ * Read release configuration from kb.config.json (optional)
+ */
+async function readReleaseConfig(cwd: string): Promise<any> {
+  try {
+    const configPath = join(cwd, 'kb.config.json');
+    const configContent = await readFile(configPath, 'utf-8');
+    return JSON.parse(configContent);
+  } catch {
+    return {}; // fallback to empty config if file doesn't exist
+  }
 }
 
 async function detectModifiedPackages(

@@ -29,7 +29,7 @@ type ReleasePlanResult = CommandResult & {
   };
 };
 
-export const planCommand = defineCommand<ReleasePlanFlags, ReleasePlanResult>({
+export const planCommand = defineCommand<any, ReleasePlanFlags, ReleasePlanResult>({
   name: 'release:plan',
   flags: {
     scope: {

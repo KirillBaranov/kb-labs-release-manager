@@ -6,4 +6,5 @@ export * from './rollback';
 export * from './runner';
 export * from './reporters';
 export * from './shell-adapter';
+export * from './versioning-strategies';
 

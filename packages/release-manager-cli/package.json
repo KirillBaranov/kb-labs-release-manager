@@ -1,6 +1,6 @@
 {
   "name": "@kb-labs/release-manager-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "KB Labs Release Manager - CLI commands for release management",
   "type": "module",
   "main": "./dist/index.js",
@@ -40,6 +40,8 @@
   "dependencies": {
     "@kb-labs/release-manager-changelog": "link:../release-manager-changelog",
     "@kb-labs/core": "link:../../../kb-labs-core",
+    "@kb-labs/core-runtime": "link:../../../kb-labs-core/packages/core-runtime",
+    "@kb-labs/core-sys": "link:../../../kb-labs-core/packages/core-sys",
     "@kb-labs/plugin-manifest": "link:../../../kb-labs-plugin/packages/plugin-manifest",
     "@kb-labs/release-manager-checks": "link:../release-manager-checks",
     "@kb-labs/release-manager-contracts": "workspace:*",

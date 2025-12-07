@@ -47,6 +47,9 @@ importers:
 
   packages/release-manager-changelog:
     dependencies:
+      '@kb-labs/core-platform':
+        specifier: link:../../../kb-labs-core/packages/core-platform
+        version: link:../../../kb-labs-core/packages/core-platform
       conventional-commits-parser:
         specifier: ^4.0.0
         version: 4.0.0
@@ -115,6 +118,12 @@ importers:
       '@kb-labs/core':
         specifier: link:../../../kb-labs-core
         version: link:../../../kb-labs-core
+      '@kb-labs/core-runtime':
+        specifier: link:../../../kb-labs-core/packages/core-runtime
+        version: link:../../../kb-labs-core/packages/core-runtime
+      '@kb-labs/core-sys':
+        specifier: link:../../../kb-labs-core/packages/core-sys
+        version: link:../../../kb-labs-core/packages/core-sys
       '@kb-labs/plugin-manifest':
         specifier: link:../../../kb-labs-plugin/packages/plugin-manifest
         version: link:../../../kb-labs-plugin/packages/plugin-manifest

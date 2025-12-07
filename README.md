@@ -1,100 +1,255 @@
-# KB Labs Release Manager (@kb-labs/release-manager)
+# KB Labs Release Manager
 
-> **Unified release orchestration for monorepo packages.** Combines audit, devlink, mind checks with version management and publishing. Guarantees that releases only happen when all quality gates pass, automatically publishes packages, and maintains full release traceability.
+> **Professional release orchestration for modern monorepos.** Automate version management, quality checks, and publishing with enterprise-grade reliability.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18.18.0+-green.svg)](https://nodejs.org/)
-[![pnpm](https://img.shields.io/badge/pnpm-9.0.0+-orange.svg)](https://pnpm.io/)
+[![KB Labs Platform](https://img.shields.io/badge/KB_Labs-Platform-blue.svg)](https://github.com/kb-labs)
 
-## 🎯 Vision
+## Overview
 
-KB Labs Release Manager is the final step in the KB Labs engineering cycle: TTM (Time to Market). It combines audit, devlink, mind checks with version management and publishing, guaranteeing that releases only happen when all quality gates pass, automatically publishes packages, and maintains full release traceability.
+KB Labs Release Manager is a complete release automation solution that combines quality gates, version management, and publishing into a single, reliable workflow. It's designed for teams who want to ship confidently without manual release processes.
 
-The project solves the problem of manual, error-prone release processes in monorepos by providing an automated, orchestrated release workflow that integrates quality checks, version management, changelog generation, and publishing. Instead of manually running multiple commands and checking quality, developers can use `kb release run` to execute a complete, verified release.
+**Key benefits:**
+- ✅ **Automated quality gates** - Integrates with audit, tests, and build checks
+- ✅ **Smart versioning** - Detects changes and computes versions automatically
+- ✅ **Safe publishing** - Atomic operations with automatic rollback on failure
+- ✅ **Full traceability** - Complete audit trail of every release
+- ✅ **Human-friendly changelogs** - AI-powered changelog generation
 
-This project is part of the **@kb-labs** ecosystem and integrates seamlessly with Audit, DevLink, Mind, and all other KB Labs tools to ensure reliable, traceable releases.
-
-> "If Audit ensures quality — Release Manager ensures trust."
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
-```bash
-pnpm add -D @kb-labs/release-manager
-```
-
-### Development
+Release Manager is part of the KB Labs platform and available through the marketplace:
 
 ```bash
-# Install dependencies
-pnpm install
+# Add Release Manager to your workspace
+pnpm kb marketplace add @kb-labs/release-manager
 
-# Build all packages
-pnpm build
-
-# Run tests
-pnpm test
-
-# Lint code
-pnpm lint
+# Or install via CLI
+pnpm kb plugins install @kb-labs/release-manager
 ```
 
-### Basic Usage
+### Setup
 
-#### Plan Release
+Initialize the release workspace in your project:
 
 ```bash
-# Analyze changes and prepare release plan without publishing
-kb release plan --scope packages/* --bump auto
+# Create .kb/release/ directory structure
+pnpm kb plugins setup @kb-labs/release
 ```
 
-#### Execute Release
+This creates:
+- `.kb/release/plans/` - Release plans and version calculations
+- `.kb/release/reports/` - Execution reports and audit trails
+- `.kb/release/backups/` - Automatic snapshots for rollback
+- `.kb/release/.gitignore` - Prevents accidental commits
+- `.kb/release/README.md` - Workspace documentation
+
+### First Release
 
 ```bash
-# Run full release process: plan → check → publish → report
-kb release run
+# 1. Preview what will be released
+pnpm kb release plan
 
-# Dry-run mode for simulation
-kb release run --dry-run
+# 2. Run the release (dry-run first!)
+pnpm kb release run --dry-run
 
-# Strict mode (all checks must pass)
-kb release run --strict
-
-# JSON output
-kb release run --json
+# 3. Execute the actual release
+pnpm kb release run
 ```
 
-#### Rollback
+That's it! Release Manager will:
+1. Detect changed packages
+2. Compute semantic versions
+3. Run quality checks (audit, tests, build)
+4. Generate changelog
+5. Publish to registry
+6. Create full release report
+
+## Why Release Manager?
+
+### Before Release Manager ❌
+```bash
+# Manual, error-prone process
+git diff --name-only
+# ... analyze changes manually
+npm version patch
+# ... repeat for each package
+npm run build
+npm run test
+# ... hope everything passes
+npm publish
+# ... manually write changelog
+git tag v1.0.1
+git push --tags
+```
+
+**Problems:**
+- 🔴 Easy to forget a step
+- 🔴 No automatic quality validation
+- 🔴 Manual version calculation
+- 🔴 No rollback on failure
+- 🔴 Hard to track what was released
+
+### With Release Manager ✅
+```bash
+pnpm kb release run
+```
+
+**Benefits:**
+- ✅ Single command for entire process
+- ✅ Automatic quality gates
+- ✅ Smart version detection
+- ✅ Automatic rollback on errors
+- ✅ Complete release audit trail
+
+## Features
+
+### 🎯 Intelligent Version Management
+
+**Automatic version detection from commits:**
+- Parses conventional commits (`feat:`, `fix:`, `BREAKING CHANGE:`)
+- Computes semantic versions (major.minor.patch)
+- Supports manual override when needed
+
+**Multiple versioning strategies:**
+- **Independent** - Each package has its own version
+- **Lockstep** - All packages share the same version
+- **Adaptive** - Lockstep for breaking changes, independent otherwise
 
 ```bash
-# Restore previous state from backup snapshot
-kb release rollback
+# Let Release Manager decide the version
+pnpm kb release plan
+
+# Override for manual control
+pnpm kb release plan --bump minor
+
+# Scope to specific packages
+pnpm kb release plan --scope packages/core/*
 ```
 
-#### Show Report
+### 🛡️ Quality Gates
+
+**Built-in checks before publishing:**
+- **Audit** - Code quality and security scan
+- **Tests** - Full test suite validation
+- **Build** - Compilation verification
+- **DevLink** - Dependency integrity check
 
 ```bash
-# Display last release execution report
-kb release report
-kb release report --json
+# All checks must pass
+pnpm kb release run --strict
+
+# Skip specific checks if needed
+pnpm kb release run --skip-checks
 ```
+
+### 📝 AI-Powered Changelogs
+
+Generate professional, human-readable changelogs:
+- Conventional commits parsing
+- AI summarization for clarity
+- Multi-format output (Markdown, JSON)
+- Bilingual support (English, Russian)
+
+```bash
+# Generate changelog for latest changes
+pnpm kb release changelog
+
+# From specific version
+pnpm kb release changelog --from v1.0.0
+
+# Breaking changes only
+pnpm kb release changelog --breaking-only
+```
+
+**Example output:**
+```markdown
+## @kb-labs/core 2.1.0
+
+This release introduces async logging support and improves performance
+by 40% through batched operations.
+
+### ✨ New Features
+- Async logging API for non-blocking operations
+- Batch processing for improved throughput
+
+### 🐛 Bug Fixes
+- Fixed race condition in concurrent writes
+- Resolved memory leak in long-running processes
+
+### ⚡ Performance
+- 40% faster write operations through batching
+```
+
+### 🔄 Automatic Rollback
+
+If anything goes wrong during release, Release Manager automatically:
+1. Restores package.json versions
+2. Reverts git tags
+3. Cleans up registry artifacts
+4. Provides detailed error report
+
+```bash
+# Manual rollback if needed
+pnpm kb release rollback
+```
+
+### 📊 Release Reports
+
+Get comprehensive reports in multiple formats:
+- **JSON** - For CI/CD integration (`.kb/release/report.json`)
+- **Markdown** - For humans (`.kb/release/summary.md`)
+- **Console** - Real-time progress
+
+```bash
+# View last release report
+pnpm kb release report
+
+# JSON output for automation
+pnpm kb release report --json
+```
+
+## Advanced Usage
+
+### Monorepo Support
+
+Release Manager natively supports complex monorepo structures:
+
+```bash
+# Release specific workspace
+pnpm kb release plan --scope kb-labs-core
+
+# Release all packages
+pnpm kb release run
+
+# Nested monorepos (umbrellas)
+pnpm kb release plan --scope kb-labs-mind/packages/*
+```
+
+**Supported structures:**
+- Flat monorepos (`packages/*`)
+- Nested umbrellas (`kb-*/packages/**`)
+- Mixed hierarchies (any structure)
 
 ### Configuration
 
-Add to `kb-labs.config.json`:
+Create `kb.config.json` in your workspace:
 
 ```json
 {
   "release": {
     "registry": "https://registry.npmjs.org",
     "strategy": "semver",
-    "bump": "auto",
     "strict": true,
-    "verify": ["audit", "build", "tests"],
-    "publish": {
-      "npm": true,
-      "github": false
+    "verify": ["audit", "tests", "build"],
+    "changelog": {
+      "bumpStrategy": "adaptive",
+      "format": "both",
+      "level": "standard",
+      "locale": "en"
     },
     "rollback": {
       "enabled": true,
@@ -104,271 +259,180 @@ Add to `kb-labs.config.json`:
 }
 ```
 
-### Changelog Generation
+### CI/CD Integration
 
-```bash
-# Generate changelog from conventional commits
-kb release changelog
+**GitHub Actions:**
+```yaml
+name: Release
+on:
+  workflow_dispatch:
 
-# Generate changelog from specific version
-kb release changelog --from v1.0.0
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v4
 
-# Generate detailed changelog
-kb release changelog --format md --level detailed
-
-# Generate breaking changes only
-kb release changelog --breaking-only
+      - run: pnpm install
+      - run: pnpm kb release run --strict --json
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
-### Release Preview
-
-```bash
-# Show release plan with bump table and changelog preview without making changes
-kb release preview
-kb release preview --md
+**GitLab CI:**
+```yaml
+release:
+  script:
+    - pnpm install
+    - pnpm kb release run --strict --json
+  only:
+    - main
+  when: manual
 ```
 
-### Release Verification
+## Command Reference
 
-```bash
-# Validate release readiness and check for substantial changes
-kb release verify
-kb release verify --fail-if-empty
-kb release verify --allow-types feat,fix
-```
+### Core Commands
 
-## ✨ Features
-
-### Pre-Release Checks
-
-- **Audit**: Code quality via `kb audit run`
-- **Build**: Verification via `pnpm build`
-- **Tests**: Coverage via vitest
-- **DevLink**: Dependency integrity
-- **Mind**: Schema consistency
-
-### Version Management
-
-- **Auto-detect** version bumps from conventional commits
-- **Manual override** via `--bump patch|minor|major`
-- **Semantic versioning** strategy
-- **Dependency graph** aware
-
-### Enhanced Changelog
-
-- **Conventional commits** parsing with single-pass performance
-- **Bot filtering** (dependabot, renovate, custom patterns)
-- **Git providers** (GitHub, GitLab, self-hosted) with auto-detect
-- **Version policies** (independent, ripple, lockstep)
-- **Multiple formats** (JSON manifest + Markdown)
-- **i18n support** (en, ru locales)
-- **Rendering levels** (compact, standard, detailed)
-- **Security** (redaction patterns, body truncation)
-- **Deterministic output** with SHA256 integrity hashes
-
-### Publishing
-
-- **Safe publishing** only when checks pass
-- **Atomic behavior** with rollback on failure
-- **Dry-run mode** for simulation
-- **Registry configurable** (npm, custom)
-
-### Reporting
-
-Formats generated:
-- **JSON** (`.kb/release/report.json`) — for CI/CD
-- **Markdown** (`.kb/release/summary.md`) — human readable
-- **Text** (`.kb/release/summary.txt`) — minimal output
-
-### Rollback
-
-- **Automatic snapshots** before releases
-- **One-command recovery** from failures
-- **Backup retention** configurable
-
-## 📁 Repository Structure
-
-```
-kb-labs-release-manager/
-├── packages/                # Core packages
-│   ├── release-core/        # Orchestration, planning, versioning, publishing
-│   ├── release-checks/      # Integrations with audit, devlink, mind, tests
-│   ├── release-cli/         # CLI commands (plan, run, rollback, report, changelog, preview, verify)
-│   └── changelog/           # Conventional commits parser and changelog generator
-├── docs/                    # Documentation
-│   └── adr/                 # Architecture Decision Records
-└── scripts/                 # Utility scripts
-```
-
-### Directory Descriptions
-
-- **`packages/release-core/`** - Core orchestration, planning, versioning, and publishing logic
-- **`packages/release-checks/`** - Pre-release check integrations with audit, devlink, mind, and tests
-- **`packages/release-cli/`** - CLI commands for release operations
-- **`packages/changelog/`** - Conventional commits parser and changelog generator
-- **`docs/`** - Documentation including ADRs and guides
-
-## 📦 Packages
-
-| Package | Description |
+| Command | Description |
 |---------|-------------|
-| [@kb-labs/release-core](./packages/release-core/) | Orchestration, planning, versioning, publishing, and reporting |
-| [@kb-labs/release-checks](./packages/release-checks/) | Integrations with audit, devlink, mind, tests for pre-release validation |
-| [@kb-labs/release-cli](./packages/release-cli/) | CLI commands (plan, run, rollback, report, changelog, preview, verify) |
-| [@kb-labs/changelog](./packages/changelog/) | Conventional commits parser and changelog generator |
+| `pnpm kb release plan` | Preview release plan without publishing |
+| `pnpm kb release run` | Execute full release workflow |
+| `pnpm kb release rollback` | Revert to previous state |
+| `pnpm kb release report` | View last release report |
+| `pnpm kb release changelog` | Generate changelog from commits |
+| `pnpm kb release preview` | Show detailed release preview |
+| `pnpm kb release verify` | Validate release readiness |
 
-### Package Details
+### Common Flags
 
-**@kb-labs/release-core** provides orchestration and publishing:
-- Release planning (detect changes, compute versions)
-- Pre-release checking coordination
-- Version management and package.json updates
-- Publishing to npm registry
-- Report generation (JSON, Markdown, Text)
-- Rollback snapshots and recovery
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Simulate release without publishing |
+| `--strict` | All checks must pass (fail-fast) |
+| `--scope <pattern>` | Filter to specific packages |
+| `--bump <type>` | Override version bump (patch/minor/major) |
+| `--json` | JSON output for automation |
+| `--skip-checks` | Skip pre-release validation |
 
-**@kb-labs/release-checks** provides pre-release validations:
-- **Audit Check**: Run `kb audit run` for code quality
-- **Build Check**: Verify build via `pnpm build`
-- **Tests Check**: Validate test coverage via vitest
-- **DevLink Check**: Validate dependency integrity
-- **Mind Check**: Validate schema consistency
+## Use Cases
 
-**@kb-labs/release-cli** provides CLI commands:
-- `kb release plan` - Analyze changes and prepare release plan
-- `kb release run` - Execute full release process
-- `kb release rollback` - Restore previous state
-- `kb release report` - Display last release report
-- `kb release changelog` - Generate changelog from conventional commits
-- `kb release preview` - Preview release plan without making changes
-- `kb release verify` - Validate release readiness
+### 1. Regular Release
+```bash
+# Standard workflow
+pnpm kb release run
+```
 
-**@kb-labs/changelog** provides changelog generation:
-- Conventional commits parsing with single-pass performance
-- Bot filtering (dependabot, renovate, custom patterns)
-- Git provider support (GitHub, GitLab, self-hosted)
-- Version policies (independent, ripple, lockstep)
-- Multiple output formats (JSON manifest + Markdown)
-- i18n support (en, ru locales)
-- Rendering levels (compact, standard, detailed)
+### 2. Emergency Hotfix
+```bash
+# Quick patch release
+pnpm kb release run --bump patch --skip-checks
+```
 
-## 🛠️ Available Scripts
+### 3. Major Version Bump
+```bash
+# Review changes first
+pnpm kb release plan --bump major
+# Then execute
+pnpm kb release run --bump major
+```
 
-| Script | Description |
-|--------|-------------|
-| `pnpm dev` | Start development mode for all packages |
-| `pnpm build` | Build all packages |
-| `pnpm build:clean` | Clean and build all packages |
-| `pnpm test` | Run all tests |
-| `pnpm test:coverage` | Run tests with coverage reporting |
-| `pnpm test:watch` | Run tests in watch mode |
-| `pnpm lint` | Lint all code |
-| `pnpm lint:fix` | Fix linting issues |
-| `pnpm format` | Format code with Prettier |
-| `pnpm type-check` | TypeScript type checking |
-| `pnpm check` | Run lint, type-check, and tests |
-| `pnpm ci` | Full CI pipeline (clean, build, check) |
-| `pnpm clean` | Clean build artifacts |
-| `pnpm clean:all` | Clean all node_modules and build artifacts |
+### 4. Scoped Release
+```bash
+# Release only core packages
+pnpm kb release run --scope packages/core-*
+```
 
-## 📋 Development Policies
+## FAQ
 
-- **Code Style**: ESLint + Prettier, TypeScript strict mode
-- **Testing**: Vitest with comprehensive test coverage
-- **Versioning**: SemVer with automated releases through Changesets
-- **Architecture**: Document decisions in ADRs (see `docs/adr/`)
-- **Safety**: All checks must pass in `--strict` mode, atomic operations with rollback
-- **Deterministic**: JSON reports and release plans are reproducible
+### Q: Do I need to install Release Manager separately?
 
-## 🔧 Requirements
+**A:** No! Release Manager comes with the KB Labs platform. Just add it via marketplace:
+```bash
+pnpm kb marketplace add @kb-labs/release-manager
+```
 
-- **Node.js**: >= 18.18.0
-- **pnpm**: >= 9.0.0
+### Q: Do I need to run setup before first use?
 
-## ⚙️ Configuration
+**A:** Yes, run setup once per project to create the `.kb/release/` workspace:
+```bash
+pnpm kb plugins setup @kb-labs/release
+```
+This creates the directory structure for plans, reports, and backups. Setup is automatic and safe to run multiple times.
 
-### Release Configuration
+### Q: Can I use Release Manager without the full KB Labs platform?
 
+**A:** Release Manager is designed to work within the KB Labs ecosystem. While technically possible to use standalone, you'll get the best experience with the full platform including audit, devlink, and mind integration.
+
+### Q: What happens if my release fails?
+
+**A:** Release Manager automatically rolls back all changes:
+- Package versions are restored
+- Git tags are removed
+- Registry artifacts are cleaned (if possible)
+- You get a detailed error report showing what failed
+
+### Q: Can I customize the changelog format?
+
+**A:** Yes! Configure in `kb.config.json`:
 ```json
 {
   "release": {
-    "registry": "https://registry.npmjs.org",
-    "strategy": "semver",
-    "bump": "auto",
-    "strict": true,
-    "verify": ["audit", "build", "tests"],
-    "publish": {
-      "npm": true,
-      "github": false
-    },
-    "rollback": {
-      "enabled": true,
-      "maxHistory": 5
+    "changelog": {
+      "level": "detailed",      // compact | standard | detailed
+      "locale": "en",            // en | ru
+      "format": "both"           // json | md | both
     }
   }
 }
 ```
 
-### Release Stages
+### Q: How does version detection work?
 
-1. **Planning** — detect changes, compute versions
-2. **Checking** — run pre-release quality checks
-3. **Versioning** — update package.json versions
-4. **Publishing** — build and publish to registry
-5. **Verifying** — confirm publish success
-6. **Rollback** — restore on failure
+**A:** Release Manager uses conventional commits:
+- `feat:` → minor version bump
+- `fix:` → patch version bump
+- `BREAKING CHANGE:` → major version bump
+- Manual override with `--bump` flag
 
-### Safety Features
+### Q: Can I release specific packages only?
 
-- All checks must pass in `--strict` mode
-- Atomic operations with rollback
-- Deterministic JSON reports
-- Reproducible release plans
+**A:** Yes! Use the `--scope` flag:
+```bash
+pnpm kb release run --scope packages/core-*
+```
 
-### Exit Codes
+### Q: Is rollback automatic?
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success — release published |
-| 1 | Infrastructure error |
-| 2 | Quality gate failed |
-| 3 | Misconfiguration |
-| 4 | Rollback executed |
+**A:** Yes, if ANY check fails or publishing errors occur, Release Manager automatically rolls back all changes.
 
-## 📚 Documentation
+### Q: Can I skip quality checks?
 
-- [Documentation Standard](./docs/DOCUMENTATION.md) - Full documentation guidelines
-- [Contributing Guide](./CONTRIBUTING.md) - How to contribute
-- [Architecture Decisions](./docs/adr/) - ADRs for this project
+**A:** Yes, with `--skip-checks`, but NOT recommended for production releases:
+```bash
+pnpm kb release run --skip-checks  # Use with caution!
+```
 
-## 🔗 Related Packages
+### Q: How do I view release history?
 
-### Dependencies
+**A:** Check the `.kb/release/` directory:
+- `report.json` - Last release details
+- `plan.json` - Last release plan
+- `changelog.md` - Generated changelog
 
-- [@kb-labs/core](https://github.com/KirillBaranov/kb-labs-core) - Core utilities
-- [@kb-labs/audit](https://github.com/KirillBaranov/kb-labs-audit) - Code quality checks
-- [@kb-labs/devlink](https://github.com/KirillBaranov/kb-labs-devlink) - Dependency checks
-- [@kb-labs/mind](https://github.com/KirillBaranov/kb-labs-mind) - Schema validation
-- [@kb-labs/devkit](https://github.com/KirillBaranov/kb-labs-devkit) - Shared tooling
-- [@kb-labs/shared](https://github.com/KirillBaranov/kb-labs-shared) - Shared CLI UI
+## Support & Resources
 
-### Used By
+- **Documentation**: [Full docs →](./docs/)
+- **Marketplace**: Add plugins via `pnpm kb marketplace`
+- **Issues**: [Report bugs →](https://github.com/kb-labs/kb-labs-release-manager/issues)
+- **Discussions**: [Ask questions →](https://github.com/kb-labs/kb-labs/discussions)
 
-- All KB Labs projects for release orchestration
-- CI/CD pipelines
-
-### Ecosystem
-
-- [KB Labs](https://github.com/KirillBaranov/kb-labs) - Main ecosystem repository
-
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines and contribution process.
-
-## 📄 License
+## License
 
 MIT © KB Labs
 
 ---
 
-**See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines and contribution process.**
+**Part of the [KB Labs Platform](https://github.com/kb-labs) - Modern development tools for serious teams.**

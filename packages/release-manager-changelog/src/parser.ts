@@ -4,8 +4,7 @@
  */
 
 // @ts-ignore - conventional-commits-parser has no types
-import pkg from 'conventional-commits-parser';
-const conventionalParser = pkg.parser;
+import conventionalParser from 'conventional-commits-parser';
 import simpleGit from 'simple-git';
 import type { Change, CommitType, BreakingChange, Reference, Author, ParseOptions } from './types';
 
@@ -32,17 +31,18 @@ export async function parseCommits(options: ParseOptions): Promise<Change[]> {
   // Build git log command for single traversal
   // Format: SHA, author name, author email, author date (ISO), subject, body
   const format = '%H%x00%an%x00%ae%x00%ai%x00%s%x00%b%n--COMMIT_FOOTER--';
-  
+
   // Get commits with --name-status for changed files info
-  const logArgs = ['--no-merges', '--name-status', `--format=${format}`, `${from}..${to}`];
-  
+  // NOTE: simple-git requires arguments as separate array elements for git.raw()
+  const logArgs = ['log', '--no-merges', '--name-status', `--format=${format}`, `${from}..${to}`];
+
   // Add package filter if specified
   if (packagePath) {
     logArgs.push('--', packagePath);
   }
 
   const logOutput = await git.raw(logArgs);
-  
+
   return parseGitLogOutput(logOutput, {
     ignoreAuthors,
     includeTypes,
@@ -78,8 +78,10 @@ function parseGitLogOutput(
 
     // Parse header: SHA\0author\0email\0date\0subject\0body
     const [sha, authorName, authorEmail, authorDate, subject, body = ''] = header.split('\0');
-    
-    if (!sha || sha.length !== 40 || !authorName || !authorEmail || !authorDate || !subject) continue; // Invalid fields
+
+    if (!sha || sha.length !== 40 || !authorName || !authorEmail || !authorDate || !subject) {
+      continue; // Invalid fields
+    }
 
     // Ignore bot authors
     if (options.ignoreAuthors.some((pattern: string) => matchesGlob(authorName, pattern))) {
@@ -88,7 +90,7 @@ function parseGitLogOutput(
 
     // Parse conventional commit
     const convention = parseConventionalCommit(`${subject}\n\n${body || ''}`);
-    
+
     // Skip filtered types
     if (shouldSkipCommit(convention.type, options.includeTypes, options.excludeTypes)) {
       continue;
@@ -140,34 +142,59 @@ function parseConventionalCommit(commitMessage: string): {
   breaking?: BreakingChange[];
   footers: string[];
 } {
-  const result = conventionalParser(commitMessage, {
-    headerPattern: /^(\w*)(?:\(([^)]*)\))?: (.*)$/,
-  }) as any;
+  const lines = commitMessage.split('\n');
+  const header = lines[0] || '';
+  const bodyLines = lines.slice(2); // Skip empty line after header
+  const body = bodyLines.join('\n').trim();
 
-  const type = normalizeType(result.type);
-  const breaking: BreakingChange[] = [];
+  // Parse header with conventional commits format: type(scope): subject or type(scope)!: subject
+  const headerMatch = header.match(/^(\w+)(?:\(([^)]+)\))?(!)?:\s*(.+)$/);
 
-  // Detect breaking changes
-  if (result.header.includes('!:')) {
-    breaking.push({ summary: result.header });
+  let parsedType: string | undefined;
+  let parsedScope: string | undefined;
+  let parsedSubject: string = '';
+  let hasBreaking = false;
+
+  if (headerMatch) {
+    parsedType = headerMatch[1];
+    parsedScope = headerMatch[2];
+    hasBreaking = headerMatch[3] === '!';
+    parsedSubject = headerMatch[4] || '';
+  } else {
+    // Fallback: treat whole header as subject
+    parsedType = undefined;
+    parsedSubject = header;
   }
 
-  // Check BREAKING CHANGE footer
-  const breakingFooter = result.footer?.match(/BREAKING CHANGE[:\s]*(.+)/);
-  if (breakingFooter) {
-    breaking.push({ 
-      summary: breakingFooter[1],
-      notes: result.body,
-    });
+  const type = normalizeType(parsedType);
+  const breaking: BreakingChange[] = [];
+
+  // Detect breaking changes from ! suffix in header
+  if (hasBreaking) {
+    breaking.push({ summary: parsedSubject });
+  }
+
+  // Extract footers (lines starting with keyword followed by :)
+  const footers: string[] = [];
+  const footerLines = body.split('\n');
+  for (const line of footerLines) {
+    if (/^[A-Z-]+:\s*/.test(line)) {
+      footers.push(line);
+      // Check for BREAKING CHANGE footer
+      const breakingMatch = line.match(/^BREAKING CHANGE:\s*(.+)/);
+      if (breakingMatch && breakingMatch[1]) {
+        breaking.push({ summary: breakingMatch[1] });
+      }
+    }
   }
 
   return {
     type,
-    scope: result.scope,
-    subject: result.subject || result.header,
-    body: result.body,
+    scope: parsedScope,
+    subject: parsedSubject,
+    body: body || undefined,
     breaking: breaking.length > 0 ? breaking : undefined,
-    footers: result.footer ? result.footer.split('\n') : [],
+    footers,
   };
 }
 
