@@ -140,7 +140,7 @@ export const changelogCommand = defineCommand<ReleaseChangelogFlags, ReleaseChan
     // Load configuration
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
-      profileKey: flags.profile,
+      profileId: flags.profile,
     });
 
     ctx.tracker.checkpoint('range');

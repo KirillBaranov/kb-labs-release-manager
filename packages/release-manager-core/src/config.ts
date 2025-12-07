@@ -8,7 +8,7 @@ import type { ReleaseConfig } from './types';
 
 export interface LoadReleaseConfigOptions {
   cwd?: string;
-  profileKey?: string;
+  profileId?: string;
   cli?: Record<string, unknown>;
   trace?: boolean;
 }
@@ -27,11 +27,11 @@ export async function loadReleaseConfig(
   const bundle = await loadBundle({
     cwd: opts.cwd || process.cwd(),
     product: 'release',
-    profileId: opts.profileKey || 'default',
+    profileId: opts.profileId || 'default',
     cli: opts.cli,
     validate: 'warn', // Validate with warnings
   });
-  
+
   return {
     config: bundle.config as ReleaseConfig,
     trace: opts.trace ? bundle.trace : undefined,

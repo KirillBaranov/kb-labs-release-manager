@@ -72,7 +72,7 @@ export const planCommand = defineCommand<ReleasePlanFlags, ReleasePlanResult>({
     // Load configuration
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
-      profileKey: flags.profile,
+      profileId: flags.profile,
       cli: {
         bump: flags.bump,
         strict: flags.strict,

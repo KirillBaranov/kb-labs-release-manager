@@ -79,7 +79,7 @@ export const verifyCommand = defineCommand<ReleaseVerifyFlags, ReleaseVerifyResu
     // Load configuration and create plan
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
-      profileKey: flags.profile,
+      profileId: flags.profile,
       cli: {
         bump: flags.bump,
       },

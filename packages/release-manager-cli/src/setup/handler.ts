@@ -45,12 +45,22 @@ export async function run(ctx: SetupContext = {}) {
     ].join('\n')
   );
 
-  ctx.logger?.info('Release setup completed', { cwd, created });
+  ctx.runtime?.log?.('info', 'Release setup completed', { cwd, created });
 
   return {
     ok: true,
     releaseDir,
     created,
+    configDefaults: {
+      workspace: {
+        type: 'pnpm',
+        root: '.',
+      },
+      git: {},
+      changelog: {
+        locale: 'en',
+      },
+    },
   };
 }
 

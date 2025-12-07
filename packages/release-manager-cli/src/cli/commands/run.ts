@@ -89,7 +89,7 @@ export const runCommand = defineCommand<ReleaseRunFlags, ReleaseRunResult>({
     // Load configuration
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
-      profileKey: flags.profile,
+      profileId: flags.profile,
       cli: {
         bump: flags.bump,
         strict: flags.strict,

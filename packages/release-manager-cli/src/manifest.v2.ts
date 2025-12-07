@@ -1,4 +1,5 @@
-import { createManifestV2 } from '@kb-labs/plugin-manifest';
+import { defineManifest } from '@kb-labs/shared-command-kit';
+import type { ManifestV2 } from '@kb-labs/plugin-manifest';
 import { pluginContractsManifest } from '@kb-labs/release-manager-contracts';
 
 /**
@@ -149,7 +150,7 @@ const commands: CliCommands = [
   },
 ];
 
-export const manifest = createManifestV2<typeof pluginContractsManifest>({
+export const manifest = defineManifest({
   schema: 'kb.plugin/2',
   id: '@kb-labs/release',
   version: '0.1.0',
@@ -343,6 +344,20 @@ export const manifest = createManifestV2<typeof pluginContractsManifest>({
       cpuMs: 60000,
     },
     capabilities: ['fs:read', 'fs:write'],
+    artifacts: {
+      write: [
+        {
+          to: 'self',
+          paths: ['.kb/release/**'],
+        },
+      ],
+      read: [
+        {
+          from: 'self',
+          paths: ['.kb/release/**'],
+        },
+      ],
+    },
   },
   artifacts: [
     {

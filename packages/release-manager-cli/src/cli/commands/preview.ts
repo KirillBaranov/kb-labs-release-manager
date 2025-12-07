@@ -66,7 +66,7 @@ export const previewCommand = defineCommand<ReleasePreviewFlags, ReleasePreviewR
     // Load configuration and create plan
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
-      profileKey: flags.profile,
+      profileId: flags.profile,
       cli: {
         bump: flags.bump,
         strict: flags.strict,
