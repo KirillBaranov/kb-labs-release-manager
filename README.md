@@ -429,10 +429,17 @@ pnpm kb release run --skip-checks  # Use with caution!
 - **Issues**: [Report bugs →](https://github.com/kb-labs/kb-labs-release-manager/issues)
 - **Discussions**: [Ask questions →](https://github.com/kb-labs/kb-labs/discussions)
 
+
 ## License
 
-MIT © KB Labs
+KB Public License v1.1 - see [LICENSE](LICENSE) for details.
 
----
+This is open source software with some restrictions on:
+- Offering as a hosted service (SaaS/PaaS)
+- Creating competing platform products
 
-**Part of the [KB Labs Platform](https://github.com/kb-labs) - Modern development tools for serious teams.**
+For commercial licensing inquiries: contact@kblabs.dev
+
+**User Guides:**
+- [English Guide](../LICENSE-GUIDE.en.md)
+- [Русское руководство](../LICENSE-GUIDE.ru.md)
