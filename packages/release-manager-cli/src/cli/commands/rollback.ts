@@ -2,7 +2,7 @@
  * Release rollback command
  */
 
-import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
+import { defineCommand, type CommandResult } from '@kb-labs/sdk';
 import { restoreSnapshot } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';

@@ -82,8 +82,11 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
   // Read config for customization (optional)
   const config = await readReleaseConfig(cwd);
 
+  // Determine if scope is a package name (e.g., @kb-labs/pkg) or a glob pattern (e.g., packages/*)
+  const isPackageName = scope && (scope.startsWith('@') || !scope.includes('/') || !scope.includes('*'));
+
   // Find package.json files - support nested monorepos
-  const pattern = scope
+  const pattern = scope && !isPackageName
     ? `${scope}/**/package.json`
     : (config.release?.packagesPattern || '**/package.json');
 
@@ -112,6 +115,11 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
 
     // Skip private packages unless configured
     if (packageJson.private && !config.release?.includePrivate) {
+      continue;
+    }
+
+    // If scope is a package name, filter by exact match
+    if (isPackageName && packageJson.name !== scope) {
       continue;
     }
 

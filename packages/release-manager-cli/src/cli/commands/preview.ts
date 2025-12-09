@@ -3,8 +3,7 @@
  * Dry-run release planning
  */
 
-import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
-import { keyValue } from '@kb-labs/shared-cli-ui';
+import { defineCommand, type CommandResult, keyValue } from '@kb-labs/sdk';
 import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';

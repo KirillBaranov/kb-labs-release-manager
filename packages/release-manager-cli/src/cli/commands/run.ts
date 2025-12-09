@@ -4,7 +4,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
+import { defineCommand, type CommandResult } from '@kb-labs/sdk';
 import {
   loadReleaseConfig,
   planRelease,
@@ -83,7 +83,8 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
   async handler(ctx, argv, flags) {
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
-    
+    const dryRun = flags['dry-run'] === true;
+
     ctx.tracker.checkpoint('config');
 
     // Load configuration
@@ -142,7 +143,7 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
             cwd: repoRoot,
             branch: 'unknown',
             profile: config as any,
-            dryRun: flags['dry-run'],
+            dryRun,
           },
           stage: 'rollback',
           plan,
@@ -176,7 +177,7 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
     const publishResult = await publishPackages({
       cwd: repoRoot,
       plan,
-      dryRun: flags['dry-run'],
+      dryRun,
     });
 
     ctx.tracker.checkpoint('publish');
@@ -196,13 +197,14 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         cwd: repoRoot,
         branch: 'unknown',
         profile: config as any,
-        dryRun: flags['dry-run'],
+        dryRun,
       },
       stage: 'verifying',
       plan,
       result: {
         ok: publishResult.errors.length === 0,
         published: publishResult.published,
+        skipped: publishResult.skipped,
         changelog,
         checks,
         timingMs: ctx.tracker.total(),
@@ -236,6 +238,17 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         sections.push({
           header: 'Published packages',
           items: publishedItems,
+        });
+      }
+
+      if (report.result.skipped && report.result.skipped.length > 0) {
+        const skippedItems: string[] = [];
+        for (const pkg of report.result.skipped) {
+          skippedItems.push(`${ctx.output.ui.symbols.info} ${pkg}`);
+        }
+        sections.push({
+          header: 'Skipped (dry-run)',
+          items: skippedItems,
         });
       }
 

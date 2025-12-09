@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 import { writeFile, mkdir } from 'node:fs/promises';
-import { defineCommand, type CommandResult, usePlatform } from '@kb-labs/shared-command-kit';
+import { defineCommand, type CommandResult, usePlatform } from '@kb-labs/sdk';
 import { loadReleaseConfig } from '@kb-labs/release-manager-core';
 import {
   resolveGitRange,
@@ -15,6 +15,8 @@ import {
   detectProvider,
   enhanceChangeWithLinks,
   formatPackageWithLLM,
+  loadTemplate,
+  packageToTemplateData,
   type Change,
   type ReleaseManifest,
   type PackageRelease,
@@ -30,6 +32,7 @@ type ReleaseChangelogFlags = {
   'since-tag': { type: 'string'; description?: string };
   format: { type: 'string'; description?: string; choices?: readonly string[]; default?: string };
   level: { type: 'string'; description?: string; choices?: readonly string[]; default?: string };
+  template: { type: 'string'; description?: string };
   'breaking-only': { type: 'boolean'; description?: string; default?: boolean };
   json: { type: 'boolean'; description?: string; default?: boolean };
 };
@@ -114,6 +117,10 @@ export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, Releas
       description: 'Detail level',
       choices: ['compact', 'standard', 'detailed'] as const,
       default: 'standard',
+    },
+    template: {
+      type: 'string',
+      description: 'Template name (builtin: corporate, corporate-ai, technical, compact) or custom path',
     },
     'breaking-only': {
       type: 'boolean',
@@ -207,8 +214,21 @@ export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, Releas
         changes: enhancedChanges,
       };
 
-      // Use LLM formatter with graceful degradation
-      markdown = await formatPackageWithLLM(platform, syntheticRelease, locale);
+      // Check if template specified
+      const templateName = flags.template || config.changelog?.template;
+
+      if (templateName) {
+        // Use custom template
+        const template = await loadTemplate(templateName, repoRoot);
+        const templateData = packageToTemplateData(syntheticRelease, locale, config.changelog?.metadata);
+
+        // Templates can be sync or async
+        const result = template.render(templateData, platform);
+        markdown = typeof result === 'string' ? result : await result;
+      } else {
+        // Default: Use LLM formatter with graceful degradation
+        markdown = await formatPackageWithLLM(platform, syntheticRelease, locale);
+      }
     }
 
     if (format === 'json' || format === 'both') {

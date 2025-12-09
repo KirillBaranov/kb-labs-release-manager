@@ -7,13 +7,14 @@ import type {
   ReleaseContext,
   ReleaseResult,
   ReleaseStage,
-  ReleaseChecks,
+  CheckId,
+  CheckResult,
 } from './types';
 
 export interface RunnerOptions {
   config: ReleaseConfig;
   context: ReleaseContext;
-  runChecks?: (stage: ReleaseStage) => Promise<ReleaseChecks>;
+  runChecks?: (stage: ReleaseStage) => Promise<Partial<Record<CheckId, CheckResult>>>;
   executePlan?: () => Promise<void>;
   onStageChange?: (stage: ReleaseStage) => void;
 }
@@ -31,7 +32,7 @@ export async function runRelease(options: RunnerOptions): Promise<ReleaseResult>
 
   const startTime = Date.now();
   const errors: string[] = [];
-  let checks: ReleaseChecks | undefined;
+  let checks: Partial<Record<CheckId, CheckResult>> | undefined;
 
   try {
     // Stage 1: Planning

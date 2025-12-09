@@ -121,6 +121,7 @@ export interface ChangelogConfig {
   format?: 'json' | 'md' | 'both';
   level?: 'compact' | 'standard' | 'detailed';
   template?: string | null;
+  metadata?: Record<string, unknown>; // Custom metadata passed to templates
   locale?: 'en' | 'ru';
   cache?: boolean;
   requireAudit?: boolean;

@@ -69,6 +69,9 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.7.1
+      globby:
+        specifier: ^11.0.0
+        version: 11.1.0
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
@@ -115,18 +118,6 @@ importers:
 
   packages/release-manager-cli:
     dependencies:
-      '@kb-labs/core':
-        specifier: link:../../../kb-labs-core
-        version: link:../../../kb-labs-core
-      '@kb-labs/core-runtime':
-        specifier: link:../../../kb-labs-core/packages/core-runtime
-        version: link:../../../kb-labs-core/packages/core-runtime
-      '@kb-labs/core-sys':
-        specifier: link:../../../kb-labs-core/packages/core-sys
-        version: link:../../../kb-labs-core/packages/core-sys
-      '@kb-labs/plugin-manifest':
-        specifier: link:../../../kb-labs-plugin/packages/plugin-manifest
-        version: link:../../../kb-labs-plugin/packages/plugin-manifest
       '@kb-labs/release-manager-changelog':
         specifier: link:../release-manager-changelog
         version: link:../release-manager-changelog
@@ -139,12 +130,9 @@ importers:
       '@kb-labs/release-manager-core':
         specifier: link:../release-manager-core
         version: link:../release-manager-core
-      '@kb-labs/shared-cli-ui':
-        specifier: link:../../../kb-labs-shared/packages/shared-cli-ui
-        version: link:../../../kb-labs-shared/packages/shared-cli-ui
-      '@kb-labs/shared-command-kit':
-        specifier: link:../../../kb-labs-shared/packages/shared-command-kit
-        version: link:../../../kb-labs-shared/packages/shared-command-kit
+      '@kb-labs/sdk':
+        specifier: link:../../../kb-labs-sdk/packages/sdk
+        version: link:../../../kb-labs-sdk/packages/sdk
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -1617,8 +1605,8 @@ packages:
     resolution: {integrity: sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg==}
     engines: {node: '>=4'}
 
-  minimatch@10.0.3:
-    resolution: {integrity: sha512-IPZ167aShDZZUMdRk66cyQAW3qr0WzbHkPdMYa8bzZhlHhO3jALbKdxcaak7W9FfT2rZNpQuUu4Od7ILEpXSaw==}
+  minimatch@10.1.1:
+    resolution: {integrity: sha512-enIvLvRAFZYXJzkCYG5RKmPfrFArdLv+R+lbQ53BmIMLIry74bjKzX6iHAm8WYamJkhSSEabrWN5D97XnKObjQ==}
     engines: {node: 20 || >=22}
 
   minimatch@3.1.2:
@@ -3241,7 +3229,7 @@ snapshots:
     dependencies:
       foreground-child: 3.3.1
       jackspeak: 4.1.1
-      minimatch: 10.0.3
+      minimatch: 10.1.1
       minipass: 7.1.2
       package-json-from-dist: 1.0.1
       path-scurry: 2.0.0
@@ -3453,7 +3441,7 @@ snapshots:
 
   min-indent@1.0.1: {}
 
-  minimatch@10.0.3:
+  minimatch@10.1.1:
     dependencies:
       '@isaacs/brace-expansion': 5.0.0
 

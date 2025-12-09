@@ -25,7 +25,7 @@ export interface PublishingResult {
  * Publish packages according to plan
  */
 export async function publishPackages(options: PublisherOptions): Promise<PublishingResult> {
-  const { cwd, plan, dryRun, shell } = options;
+  const { plan, dryRun, shell } = options;
   const shellApi = shell || createExecaShellAdapter();
   const result: PublishingResult = {
     published: [],
@@ -52,23 +52,6 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
     }
   }
 
-  // Run build
-  try {
-    const buildResult = await shellApi.exec('pnpm', ['build'], {
-      cwd,
-      timeoutMs: 300000,
-    });
-
-    if (!buildResult.ok) {
-      result.errors.push('Build failed');
-      return result;
-    }
-  } catch (error) {
-    const msg = `Build failed: ${error instanceof Error ? error.message : String(error)}`;
-    result.errors.push(msg);
-    return result;
-  }
-
   // Publish each package
   for (const pkg of plan.packages) {
     try {
@@ -88,7 +71,8 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
         if (publishResult.ok) {
           result.published.push(`${pkg.name}@${pkg.nextVersion}`);
         } else {
-          result.errors.push(`Failed to publish ${pkg.name}`);
+          const errorDetails = publishResult.stderr || publishResult.stdout || 'Unknown error';
+          result.errors.push(`Failed to publish ${pkg.name}: ${errorDetails}`);
         }
       }
     } catch (error) {

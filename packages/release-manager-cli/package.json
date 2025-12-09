@@ -1,6 +1,6 @@
 {
   "name": "@kb-labs/release-manager-cli",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "KB Labs Release Manager - CLI commands for release management",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,16 +38,11 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
+    "@kb-labs/sdk": "link:../../../kb-labs-sdk/packages/sdk",
     "@kb-labs/release-manager-changelog": "link:../release-manager-changelog",
-    "@kb-labs/core": "link:../../../kb-labs-core",
-    "@kb-labs/core-runtime": "link:../../../kb-labs-core/packages/core-runtime",
-    "@kb-labs/core-sys": "link:../../../kb-labs-core/packages/core-sys",
-    "@kb-labs/plugin-manifest": "link:../../../kb-labs-plugin/packages/plugin-manifest",
     "@kb-labs/release-manager-checks": "link:../release-manager-checks",
     "@kb-labs/release-manager-contracts": "workspace:*",
     "@kb-labs/release-manager-core": "link:../release-manager-core",
-    "@kb-labs/shared-cli-ui": "link:../../../kb-labs-shared/packages/shared-cli-ui",
-    "@kb-labs/shared-command-kit": "link:../../../kb-labs-shared/packages/shared-command-kit",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -45,6 +45,52 @@ export async function run(ctx: SetupContext = {}) {
     ].join('\n')
   );
 
+  // Generate example release.config.ts with checks
+  await ensureFile(
+    join(releaseDir, 'release.config.example.ts'),
+    [
+      '/**',
+      ' * Example Release Manager Configuration',
+      ' * Copy to release.config.ts and customize',
+      ' */',
+      '',
+      'export default {',
+      '  checks: [',
+      '    {',
+      '      id: \'build\',',
+      '      command: \'pnpm\',',
+      '      args: [\'build\'],',
+      '      parser: \'exitcode\',',
+      '      timeoutMs: 300000, // 5 minutes',
+      '    },',
+      '    {',
+      '      id: \'tests\',',
+      '      command: \'pnpm\',',
+      '      args: [\'test\'],',
+      '      parser: \'exitcode\',',
+      '      timeoutMs: 120000, // 2 minutes',
+      '      optional: true, // Don\'t fail release if tests fail',
+      '    },',
+      '    // Custom check with JSON output',
+      '    // {',
+      '    //   id: \'devlink\',',
+      '    //   command: \'kb\',',
+      '    //   args: [\'devlink\', \'check\', \'--json\'],',
+      '    //   parser: \'json\',',
+      '    // },',
+      '    // Custom check with function parser',
+      '    // {',
+      '    //   id: \'lint\',',
+      '    //   command: \'pnpm\',',
+      '    //   args: [\'lint\'],',
+      '    //   parser: (stdout, stderr, exitCode) => exitCode === 0 && !stdout.includes(\'error\'),',
+      '    // },',
+      '  ],',
+      '};',
+      '',
+    ].join('\n')
+  );
+
   ctx.runtime?.log?.('info', 'Release setup completed', { cwd, created });
 
   return {

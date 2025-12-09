@@ -3,8 +3,7 @@
  * Validate release readiness
  */
 
-import { defineCommand, type CommandResult } from '@kb-labs/shared-command-kit';
-import { keyValue } from '@kb-labs/shared-cli-ui';
+import { defineCommand, type CommandResult, keyValue } from '@kb-labs/sdk';
 import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-manager-core';
 import { resolveGitRange, parseCommits } from '@kb-labs/release-manager-changelog';
 import { findRepoRoot } from '../../shared/utils';

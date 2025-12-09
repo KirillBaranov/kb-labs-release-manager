@@ -3,9 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@kb-labs/core": [
-        "../kb-labs-core/src/index.ts"
-      ],
       "@kb-labs/core-bundle": [
         "../kb-labs-core/packages/core-bundle/src/index.ts"
       ],
@@ -18,32 +15,11 @@
       "@kb-labs/core-platform/*": [
         "../kb-labs-core/packages/core-platform/src/*"
       ],
-      "@kb-labs/core-runtime": [
-        "../kb-labs-core/packages/core-runtime/src/index.ts"
-      ],
-      "@kb-labs/core-runtime/*": [
-        "../kb-labs-core/packages/core-runtime/src/*"
-      ],
-      "@kb-labs/core-sys": [
-        "../kb-labs-core/packages/core-sys/src/index.ts"
-      ],
-      "@kb-labs/core-sys/*": [
-        "../kb-labs-core/packages/core-sys/src/*"
-      ],
-      "@kb-labs/core/*": [
-        "../kb-labs-core/src/*"
-      ],
       "@kb-labs/plugin-contracts": [
         "../kb-labs-plugin/packages/plugin-contracts/src/index.ts"
       ],
       "@kb-labs/plugin-contracts/*": [
         "../kb-labs-plugin/packages/plugin-contracts/src/*"
-      ],
-      "@kb-labs/plugin-manifest": [
-        "../kb-labs-plugin/packages/plugin-manifest/src/index.ts"
-      ],
-      "@kb-labs/plugin-manifest/*": [
-        "../kb-labs-plugin/packages/plugin-manifest/src/*"
       ],
       "@kb-labs/release-manager-changelog": [
         "packages/release-manager-changelog/src/index.ts"
@@ -69,17 +45,11 @@
       "@kb-labs/release-manager-core/*": [
         "packages/release-manager-core/src/*"
       ],
-      "@kb-labs/shared-cli-ui": [
-        "../kb-labs-shared/packages/shared-cli-ui/src/index.ts"
+      "@kb-labs/sdk": [
+        "../kb-labs-sdk/packages/sdk/src/index.ts"
       ],
-      "@kb-labs/shared-cli-ui/*": [
-        "../kb-labs-shared/packages/shared-cli-ui/src/*"
-      ],
-      "@kb-labs/shared-command-kit": [
-        "../kb-labs-shared/packages/shared-command-kit/src/index.ts"
-      ],
-      "@kb-labs/shared-command-kit/*": [
-        "../kb-labs-shared/packages/shared-command-kit/src/*"
+      "@kb-labs/sdk/*": [
+        "../kb-labs-sdk/packages/sdk/src/*"
       ]
     }
   }

@@ -1,28 +1,25 @@
 export * from './base';
-export { AuditCheck } from './audit';
-export { DevLinkCheck } from './devlink';
-export { MindCheck } from './mind';
-export { TestsCheck } from './tests';
-export { BuildCheck } from './build';
+export { CommandCheckAdapter } from './command';
 
 // Create check registry
-import type { CheckId, CheckResult } from '@kb-labs/release-manager-core';
+import type { CheckId, CheckResult, CustomCheckConfig } from '@kb-labs/release-manager-core';
 import type { CheckAdapter } from './base';
-import { AuditCheck } from './audit';
-import { DevLinkCheck } from './devlink';
-import { MindCheck } from './mind';
-import { TestsCheck } from './tests';
-import { BuildCheck } from './build';
+import { CommandCheckAdapter } from './command';
 
-export function createCheckRegistry(): Map<CheckId, CheckAdapter> {
+/**
+ * Create check registry from custom check configs
+ * All checks are now declarative - no hardcoded checks
+ */
+export function createCheckRegistry(
+  customChecks: CustomCheckConfig[] = []
+): Map<CheckId, CheckAdapter> {
   const registry = new Map<CheckId, CheckAdapter>();
-  
-  registry.set('audit', new AuditCheck());
-  registry.set('devlink', new DevLinkCheck());
-  registry.set('mind', new MindCheck());
-  registry.set('tests', new TestsCheck());
-  registry.set('build', new BuildCheck());
-  
+
+  // Load custom checks from config
+  for (const checkConfig of customChecks) {
+    registry.set(checkConfig.id as CheckId, new CommandCheckAdapter(checkConfig));
+  }
+
   return registry;
 }
 
@@ -65,5 +62,39 @@ export async function runChecks(options: {
   }
 
   return results;
+}
+
+/**
+ * Run checks for each package in the plan
+ * Returns a map of package name to check results
+ */
+export async function runChecksPerPackage(options: {
+  checkIds: CheckId[];
+  packages: Array<{ name: string; path: string }>;
+  timeoutMs?: number;
+  registry?: Map<CheckId, CheckAdapter>;
+}): Promise<Record<string, Partial<Record<CheckId, CheckResult>>>> {
+  const {
+    checkIds,
+    packages,
+    timeoutMs = 300000,
+    registry = createCheckRegistry(),
+  } = options;
+
+  const allResults: Record<string, Partial<Record<CheckId, CheckResult>>> = {};
+
+  // Run checks for each package
+  for (const pkg of packages) {
+    const results = await runChecks({
+      checkIds,
+      cwd: pkg.path,
+      timeoutMs,
+      registry,
+    });
+
+    allResults[pkg.name] = results;
+  }
+
+  return allResults;
 }
 

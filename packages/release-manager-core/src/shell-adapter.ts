@@ -18,6 +18,8 @@ export function createExecaShellAdapter(): ShellApi {
         const result = await execa(command, args, {
           cwd: options?.cwd,
           timeout: options?.timeoutMs,
+          preferLocal: true,
+          env: process.env,
         });
         return {
           ok: result.exitCode === 0,
@@ -43,6 +45,8 @@ export function createExecaShellAdapter(): ShellApi {
         cwd: options?.cwd,
         timeout: options?.timeoutMs,
         stdio: options?.stdio || 'pipe',
+        preferLocal: true,
+        env: process.env,
       });
 
       const startTime = Date.now();

@@ -1,5 +1,4 @@
-import { defineManifest } from '@kb-labs/shared-command-kit';
-import type { ManifestV2 } from '@kb-labs/plugin-manifest';
+import { defineManifest, type ManifestV2 } from '@kb-labs/sdk';
 import { pluginContractsManifest } from '@kb-labs/release-manager-contracts';
 
 /**
@@ -103,6 +102,7 @@ const commands: CliCommands = [
         default: 'standard',
         description: 'Detail level',
       },
+      { name: 'template', type: 'string', description: 'Template name (builtin: corporate, corporate-ai, technical, compact) or custom path' },
       { name: 'breaking-only', type: 'boolean', description: 'Show only breaking changes' },
       { name: 'include', type: 'string', description: 'Comma-separated types to include' },
       { name: 'exclude', type: 'string', description: 'Types to exclude' },
@@ -116,6 +116,8 @@ const commands: CliCommands = [
       'kb release changelog',
       'kb release changelog --from v1.0.0',
       'kb release changelog --format md --level detailed',
+      'kb release changelog --template corporate-ai',
+      'kb release changelog --template ./my-template.ts',
       'kb release changelog --breaking-only',
     ],
     handler: './cli/commands/changelog#changelogCommand',

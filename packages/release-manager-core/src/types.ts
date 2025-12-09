@@ -39,7 +39,21 @@ export interface CheckResult {
   timingMs?: number;
 }
 
-export type CheckId = 'audit' | 'devlink' | 'mind' | 'tests' | 'build';
+// CheckId is now dynamic - any string is allowed
+export type CheckId = string;
+
+/**
+ * Custom check configuration
+ * Allows defining checks declaratively through config
+ */
+export interface CustomCheckConfig {
+  id: string;
+  command: string;
+  args?: string[];
+  parser?: 'json' | 'exitcode' | ((stdout: string, stderr: string, exitCode: number) => boolean);
+  timeoutMs?: number;
+  optional?: boolean;
+}
 
 export interface ReleaseChecks {
   audit?: CheckResult;
@@ -53,8 +67,10 @@ export interface ReleaseResult {
   ok: boolean;
   version?: string;
   published?: string[];
+  skipped?: string[];
   changelog?: string;
-  checks?: ReleaseChecks;
+  checks?: Partial<Record<CheckId, CheckResult>>;
+  checksPerPackage?: Record<string, Partial<Record<CheckId, CheckResult>>>;
   timingMs: number;
   errors?: string[];
 }
@@ -74,6 +90,7 @@ export interface ReleaseConfig {
   bump?: VersionBump;
   strict?: boolean;
   verify?: CheckId[];
+  checks?: CustomCheckConfig[];
   publish?: {
     npm?: boolean;
     github?: boolean;
@@ -112,6 +129,7 @@ export interface ReleaseConfig {
       experimental?: { allowMajor?: boolean };
     };
     ignoreSubmodules?: boolean;
+    metadata?: Record<string, unknown>;
   };
   git?: {
     provider?: 'auto' | 'github' | 'gitlab' | 'generic';
