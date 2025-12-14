@@ -34,7 +34,12 @@ export async function parseCommits(options: ParseOptions): Promise<Change[]> {
 
   // Get commits with --name-status for changed files info
   // NOTE: simple-git requires arguments as separate array elements for git.raw()
-  const logArgs = ['log', '--no-merges', '--name-status', `--format=${format}`, `${from}..${to}`];
+  // Special case: if from ends with ^, it might not exist (parent of first commit)
+  // In this case, use --root to show all commits from beginning
+  const useRoot = from.endsWith('^');
+  const logArgs = useRoot
+    ? ['log', '--no-merges', '--name-status', '--root', `--format=${format}`, to]
+    : ['log', '--no-merges', '--name-status', `--format=${format}`, `${from}..${to}`];
 
   // Add package filter if specified
   if (packagePath) {
@@ -68,13 +73,56 @@ function parseGitLogOutput(
   }
 ): Change[] {
   const changes: Change[] = [];
-  
+
   // Split by commit delimiter
-  const commits = output.split('--COMMIT_FOOTER--\n').filter(Boolean);
-  
-  for (const commitBlock of commits) {
-    const [header, ...fileLines] = commitBlock.split('\n');
-    if (!header) continue;
+  // Each commit block contains: header line + optional file changes
+  // After --COMMIT_FOOTER-- there's a blank line, then file lines (D/M/A), then blank line before next commit
+  const commits = output.split('--COMMIT_FOOTER--').filter(Boolean);
+
+  for (let i = 0; i < commits.length; i++) {
+    const commitBlock = commits[i];
+    if (!commitBlock) continue;
+
+    // After split by --COMMIT_FOOTER--, format is:
+    // Block 0: "SHA\0author...\0body\n"
+    // Block 1: "\n\nD\tfile1\nM\tfile2\nSHA\0author...\0body\n"
+    // Block 2: "\n\nA\tfile3\nSHA\0...\n"
+    //
+    // So: header is at END of block, files are at BEGINNING of NEXT block
+
+    const lines = commitBlock.split('\n');
+
+    // Find header line (contains \0 separators) - should be first non-empty line
+    let header = '';
+    for (const line of lines) {
+      if (line.trim() && line.includes('\0')) {
+        header = line;
+        break;
+      }
+    }
+
+    if (!header) {
+      continue;
+    }
+
+    // File lines come from NEXT block (before next commit's header)
+    let fileLines: string[] = [];
+    if (i + 1 < commits.length) {
+      const nextBlock = commits[i + 1];
+      if (!nextBlock) continue;
+
+      const nextLines = nextBlock.split('\n');
+
+      // Take lines until we hit next header (line with \0)
+      for (const line of nextLines) {
+        if (line.trim() && line.includes('\0')) {
+          break; // This is next commit's header
+        }
+        if (line.trim()) {
+          fileLines.push(line);
+        }
+      }
+    }
 
     // Parse header: SHA\0author\0email\0date\0subject\0body
     const [sha, authorName, authorEmail, authorDate, subject, body = ''] = header.split('\0');

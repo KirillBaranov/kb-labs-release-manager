@@ -92,7 +92,34 @@ export async function render(data: TemplateData, platform?: PlatformLike): Promi
     lines.push('');
   }
 
+  // Professional footer
+  const footer = buildChangelogFooter(locale);
+  lines.push(footer);
+
   return lines.join('\n').trim();
+}
+
+/**
+ * Build professional changelog footer
+ */
+function buildChangelogFooter(locale: 'en' | 'ru'): string {
+  const year = new Date().getFullYear();
+
+  if (locale === 'ru') {
+    return `---
+
+*Сгенерировано автоматически с помощью [**@kb-labs/release-manager**](https://github.com/kb-labs/kb-labs)*
+*Часть экосистемы **KB Labs Platform** — профессиональные инструменты для разработки*
+
+<sub>© ${year} KB Labs. Released under KB Public License v1.1</sub>`;
+  }
+
+  return `---
+
+*Generated automatically by [**@kb-labs/release-manager**](https://github.com/kb-labs/kb-labs)*
+*Part of the **KB Labs Platform** — Professional developer tools ecosystem*
+
+<sub>© ${year} KB Labs. Released under KB Public License v1.1</sub>`;
 }
 
 /**

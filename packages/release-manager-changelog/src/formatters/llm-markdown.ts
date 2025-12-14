@@ -132,15 +132,44 @@ Output ONLY the markdown changelog, no explanations.`;
 }
 
 /**
- * Format LLM response
+ * Format LLM response with professional footer
  */
 function formatLLMResponse(pkg: PackageRelease, llmContent: string, locale: 'en' | 'ru'): string {
   // Add package version header if LLM didn't include it
-  if (!llmContent.includes(`## ${pkg.name}`)) {
+  let formatted = llmContent;
+  if (!formatted.includes(`## ${pkg.name}`)) {
     const header = `## ${pkg.name} ${pkg.next}\n\n`;
-    return header + llmContent;
+    formatted = header + formatted;
   }
-  return llmContent;
+
+  // Add professional footer
+  const footer = buildChangelogFooter(locale);
+  formatted = formatted.trimEnd() + '\n\n' + footer;
+
+  return formatted;
+}
+
+/**
+ * Build professional changelog footer
+ */
+function buildChangelogFooter(locale: 'en' | 'ru'): string {
+  const year = new Date().getFullYear();
+
+  if (locale === 'ru') {
+    return `---
+
+*Сгенерировано автоматически с помощью [**@kb-labs/release-manager**](https://github.com/kb-labs/kb-labs)*
+*Часть экосистемы **KB Labs Platform** — профессиональные инструменты для разработки*
+
+<sub>© ${year} KB Labs. Released under KB Public License v1.1</sub>`;
+  }
+
+  return `---
+
+*Generated automatically by [**@kb-labs/release-manager**](https://github.com/kb-labs/kb-labs)*
+*Part of the **KB Labs Platform** — Professional developer tools ecosystem*
+
+<sub>© ${year} KB Labs. Released under KB Public License v1.1</sub>`;
 }
 
 /**

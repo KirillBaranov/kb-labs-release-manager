@@ -26,10 +26,30 @@ export async function resolveGitRange(options: {
   }
   
   // Resolve 'from' ref
-  const fromRef = sinceTag || from || await findLastTag(git, requireSignedTags) || 'HEAD~1';
+  // For first release (no tags), use first commit instead of HEAD~1
+  const lastTag = await findLastTag(git, requireSignedTags);
+  const fromRef = sinceTag || from || lastTag || await findFirstCommit(git);
   const toRef = to;
-  
+
   return { from: fromRef, to: toRef };
+}
+
+/**
+ * Find first commit in repository history
+ * Returns parent of first commit (non-existent) to include first commit in range
+ */
+async function findFirstCommit(git: ReturnType<typeof simpleGit>): Promise<string> {
+  try {
+    // Get first commit hash using rev-list
+    const result = await git.raw(['rev-list', '--max-parents=0', 'HEAD']);
+    const firstCommit = result.trim();
+    // Return parent notation to include first commit in git log range
+    // first^ means "parent of first commit" which doesn't exist, so git log first^..HEAD includes first commit
+    return `${firstCommit}^`;
+  } catch (error) {
+    // Fallback to HEAD~1 if we can't find first commit
+    return 'HEAD~1';
+  }
 }
 
 /**
