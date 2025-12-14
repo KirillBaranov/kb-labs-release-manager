@@ -71,6 +71,17 @@ export interface ReleaseResult {
   changelog?: string;
   checks?: Partial<Record<CheckId, CheckResult>>;
   checksPerPackage?: Record<string, Partial<Record<CheckId, CheckResult>>>;
+  versionUpdates?: Array<{
+    package: string;
+    from: string;
+    to: string;
+    updated: boolean;
+  }>;
+  git?: {
+    committed: boolean;
+    tagged: string[];
+    pushed: boolean;
+  };
   timingMs: number;
   errors?: string[];
 }

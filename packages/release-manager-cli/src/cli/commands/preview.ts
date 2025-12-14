@@ -56,7 +56,7 @@ export const previewCommand = defineCommand<any, ReleasePreviewFlags, ReleasePre
     actor: ANALYTICS_ACTOR.id,
     includeFlags: true,
   },
-  async handler(ctx, argv, flags) {
+  async handler(ctx: any, argv: string[], flags: any) {
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
     
@@ -124,13 +124,13 @@ export const previewCommand = defineCommand<any, ReleasePreviewFlags, ReleasePre
         ],
       });
 
-      const outputText = ctx.output.ui.sideBox({
+      const outputText = ctx.ui.sideBox({
         title: 'Release Preview',
         sections,
         status: 'info',
         timing: ctx.tracker.total(),
       });
-      ctx.output.write(outputText);
+      ctx.ui.write(outputText);
     }
 
     return { ok: true, plan };

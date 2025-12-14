@@ -14,6 +14,7 @@ export const ANALYTICS_PREFIX = {
   CHANGELOG: 'release.changelog',
   PREVIEW: 'release.preview',
   VERIFY: 'release.verify',
+  PUBLISH: 'release.publish',
 } as const;
 
 /**
@@ -55,6 +56,10 @@ export const ANALYTICS_EVENTS = {
   // Verify events
   VERIFY_STARTED: `${ANALYTICS_PREFIX.VERIFY}.${ANALYTICS_SUFFIX.STARTED}`,
   VERIFY_FINISHED: `${ANALYTICS_PREFIX.VERIFY}.${ANALYTICS_SUFFIX.FINISHED}`,
+
+  // Publish events
+  PUBLISH_STARTED: `${ANALYTICS_PREFIX.PUBLISH}.${ANALYTICS_SUFFIX.STARTED}`,
+  PUBLISH_FINISHED: `${ANALYTICS_PREFIX.PUBLISH}.${ANALYTICS_SUFFIX.FINISHED}`,
 } as const;
 
 /**

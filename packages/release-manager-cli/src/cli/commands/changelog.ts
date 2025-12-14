@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 import { writeFile, mkdir } from 'node:fs/promises';
-import { defineCommand, type CommandResult, usePlatform } from '@kb-labs/sdk';
+import { defineCommand, type CommandResult, useLLM } from '@kb-labs/sdk';
 import { loadReleaseConfig } from '@kb-labs/release-manager-core';
 import {
   resolveGitRange,
@@ -139,9 +139,18 @@ export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, Releas
     actor: ANALYTICS_ACTOR.id,
     includeFlags: true,
   },
-  async handler(ctx, argv, flags) {
-    // Use global platform singleton (clean approach with usePlatform helper)
-    const platform = usePlatform();
+  async handler(ctx: any, argv: string[], flags: any) {
+    // Get LLM via useLLM() helper
+    // In child process, this returns LLMProxy which forwards calls to parent OpenAI LLM via IPC
+    const llm = useLLM();
+    const platform = llm ? { llm } : undefined;
+
+    // Debug: Check if LLM is available
+    ctx.logger?.debug('LLM availability check', {
+      hasLLM: !!llm,
+      llmConstructor: llm?.constructor?.name,
+      hasPlatform: !!platform,
+    });
 
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
@@ -296,13 +305,13 @@ export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, Releas
         },
       ];
 
-      const outputText = ctx.output.ui.sideBox({
+      const outputText = ctx.ui.sideBox({
         title: 'Changelog Generated',
         sections,
         status: 'success',
         timing: ctx.tracker.total(),
       });
-      ctx.output.write(outputText);
+      ctx.ui.write(outputText);
     }
 
     return { ok: true, changesCount: enhancedChanges.length };

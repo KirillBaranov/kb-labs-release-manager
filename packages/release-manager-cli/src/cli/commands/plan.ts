@@ -4,7 +4,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineCommand, type CommandResult } from '@kb-labs/sdk';
+import { defineCommand, type CommandResult, useLoader, discoverArtifacts } from '@kb-labs/sdk';
 import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
@@ -63,13 +63,16 @@ export const planCommand = defineCommand<any, ReleasePlanFlags, ReleasePlanResul
     actor: ANALYTICS_ACTOR.id,
     includeFlags: true,
   },
-  async handler(ctx, argv, flags) {
+  async handler(ctx: any, argv: string[], flags: any) {
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
-    
+
     ctx.tracker.checkpoint('config');
 
-    // Load configuration
+    // Load configuration with loader
+    const configLoader = useLoader('Loading release configuration...');
+    configLoader.start();
+
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
       profileId: flags.profile,
@@ -79,15 +82,26 @@ export const planCommand = defineCommand<any, ReleasePlanFlags, ReleasePlanResul
       },
     });
 
+    configLoader.succeed('Configuration loaded');
+
     ctx.tracker.checkpoint('plan');
 
-    // Create release plan
+    // Create release plan with loader
+    const planLoader = useLoader('Discovering packages and planning release...');
+    planLoader.start();
+
     const plan = await planRelease({
       cwd: repoRoot,
       config,
       scope: flags.scope,
       bumpOverride: flags.bump as VersionBump | undefined,
     });
+
+    if (plan.packages.length === 0) {
+      planLoader.fail(`No packages found matching scope: ${flags.scope || 'all'}`);
+    } else {
+      planLoader.succeed(`Found ${plan.packages.length} package(s) to release`);
+    }
 
     ctx.tracker.checkpoint('complete');
 
@@ -99,7 +113,7 @@ export const planCommand = defineCommand<any, ReleasePlanFlags, ReleasePlanResul
       await writeFile(planPath, JSON.stringify(plan, null, 2), 'utf-8');
     }
 
-    ctx.logger?.info('Release plan completed', { 
+    ctx.logger?.info('Release plan completed', {
       packagesCount: plan.packages.length,
       strategy: plan.strategy,
       registry: plan.registry,
@@ -108,28 +122,30 @@ export const planCommand = defineCommand<any, ReleasePlanFlags, ReleasePlanResul
     if (flags.json) {
       ctx.output?.json(plan);
     } else {
-      if (!ctx.output) {
-        throw new Error('Output not available');
+      if (!ctx.ui) {
+        throw new Error('UI not available');
       }
 
-      const sections: Array<{ header?: string; items: string[] }> = [
-        {
-          header: 'Summary',
-          items: [
-            `Strategy: ${plan.strategy}`,
-            `Registry: ${plan.registry}`,
-            `Packages: ${plan.packages.length}`,
-          ],
-        },
-      ];
+      const sections: Array<{ header?: string; items: string[] }> = [];
 
+      // Summary as first section
+      sections.push({
+        header: 'Summary',
+        items: [
+          `Strategy: ${plan.strategy}`,
+          `Registry: ${plan.registry}`,
+          `Packages: ${plan.packages.length}`,
+        ],
+      });
+
+      // Packages section
       if (plan.packages.length > 0) {
         const packageItems: string[] = [];
         for (const pkg of plan.packages) {
           const versionInfo = pkg.currentVersion && pkg.nextVersion
             ? `${pkg.currentVersion} → ${pkg.nextVersion}`
             : pkg.nextVersion || 'new';
-          packageItems.push(`${ctx.output.ui.symbols.success} ${pkg.name}: ${versionInfo}`);
+          packageItems.push(`${ctx.ui.symbols.success} ${pkg.name}: ${versionInfo}`);
         }
         sections.push({
           header: 'Packages to release',
@@ -141,13 +157,30 @@ export const planCommand = defineCommand<any, ReleasePlanFlags, ReleasePlanResul
         });
       }
 
-      const outputText = ctx.output.ui.sideBox({
+      // Artifacts section
+      const artifactsDir = join(repoRoot, '.kb', 'release');
+      const artifacts = await discoverArtifacts(artifactsDir, [
+        { name: 'Release Plan', pattern: 'plan.json', description: 'Detailed release plan (JSON)' },
+      ]);
+
+      if (artifacts.length > 0) {
+        const artifactItems: string[] = [];
+        for (const artifact of artifacts) {
+          artifactItems.push(`${ctx.ui.symbols.info} ${artifact.name}: ${artifact.path}`);
+        }
+        sections.push({
+          header: 'Artifacts',
+          items: artifactItems,
+        });
+      }
+
+      const outputText = ctx.ui.sideBox({
         title: 'Release Plan',
         sections,
         status: 'success',
         timing: ctx.tracker.total(),
       });
-      ctx.output.write(outputText);
+      ctx.ui.write(outputText);
     }
 
     return { ok: true, plan };

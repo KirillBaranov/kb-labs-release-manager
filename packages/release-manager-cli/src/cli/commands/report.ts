@@ -31,7 +31,7 @@ export const reportCommand = defineCommand<any, ReleaseReportFlags, ReleaseRepor
     finishEvent: ANALYTICS_EVENTS.REPORT_FINISHED,
     actor: ANALYTICS_ACTOR.id,
   },
-  async handler(ctx, argv, flags) {
+  async handler(ctx: any, argv: string[], flags: any) {
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
     
@@ -80,13 +80,13 @@ export const reportCommand = defineCommand<any, ReleaseReportFlags, ReleaseRepor
         }
 
         const status = report.result.ok ? 'success' : 'error';
-        const outputText = ctx.output.ui.sideBox({
+        const outputText = ctx.ui.sideBox({
           title: 'Release Report',
           sections,
           status,
           timing: ctx.tracker.total(),
         });
-        ctx.output.write(outputText);
+        ctx.ui.write(outputText);
       }
 
       return { ok: report.result.ok, report };

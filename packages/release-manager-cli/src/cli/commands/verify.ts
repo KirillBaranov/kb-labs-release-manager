@@ -69,7 +69,7 @@ export const verifyCommand = defineCommand<any, ReleaseVerifyFlags, ReleaseVerif
     actor: ANALYTICS_ACTOR.id,
     includeFlags: true,
   },
-  async handler(ctx, argv, flags) {
+  async handler(ctx: any, argv: string[], flags: any) {
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
     
@@ -176,7 +176,7 @@ export const verifyCommand = defineCommand<any, ReleaseVerifyFlags, ReleaseVerif
       if (issues.length > 0) {
         const issueItems: string[] = [];
         for (const issue of issues) {
-          issueItems.push(`${ctx.output.ui.symbols.error} ${issue}`);
+          issueItems.push(`${ctx.ui.symbols.error} ${issue}`);
         }
         sections.push({
           header: 'Issues',
@@ -185,13 +185,13 @@ export const verifyCommand = defineCommand<any, ReleaseVerifyFlags, ReleaseVerif
       }
 
       const status = isValid ? 'success' : 'error';
-      const outputText = ctx.output.ui.sideBox({
+      const outputText = ctx.ui.sideBox({
         title: 'Release Verification',
         sections,
         status,
         timing: ctx.tracker.total(),
       });
-      ctx.output.write(outputText);
+      ctx.ui.write(outputText);
     }
 
     // Return exit code 2 for validation failure (quality gate)

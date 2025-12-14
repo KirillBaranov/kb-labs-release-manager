@@ -29,7 +29,7 @@ export const rollbackCommand = defineCommand<any, ReleaseRollbackFlags, ReleaseR
     finishEvent: ANALYTICS_EVENTS.ROLLBACK_FINISHED,
     actor: ANALYTICS_ACTOR.id,
   },
-  async handler(ctx, argv, flags) {
+  async handler(ctx: any, argv: string[], flags: any) {
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
     
@@ -48,19 +48,19 @@ export const rollbackCommand = defineCommand<any, ReleaseRollbackFlags, ReleaseR
         throw new Error('Output not available');
       }
 
-      const outputText = ctx.output.ui.sideBox({
+      const outputText = ctx.ui.sideBox({
         title: 'Rollback',
         sections: [
           {
             items: [
-              `${ctx.output.ui.symbols.success} ${ctx.output.ui.colors.success('Release state restored from backup snapshot')}`,
+              `${ctx.ui.symbols.success} ${ctx.ui.colors.success('Release state restored from backup snapshot')}`,
             ],
           },
         ],
         status: 'success',
         timing: ctx.tracker.total(),
       });
-      ctx.output.write(outputText);
+      ctx.ui.write(outputText);
     }
 
     // Return exit code 4 for rollback executed

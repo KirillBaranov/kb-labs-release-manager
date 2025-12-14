@@ -59,6 +59,29 @@ const commands: CliCommands = [
   },
   {
     manifestVersion: '1.0',
+    id: 'publish',
+    group: 'release',
+    describe: 'Publish packages to npm registry with interactive OTP',
+    longDescription: 'Smart npm publish with interactive 2FA support and better UX',
+    flags: [
+      { name: 'scope', type: 'string', description: 'Package scope (glob pattern)' },
+      { name: 'otp', type: 'string', description: 'One-time password (optional, will prompt if needed)' },
+      { name: 'dry-run', type: 'boolean', description: 'Simulate publish without actually publishing' },
+      { name: 'tag', type: 'string', description: 'NPM dist-tag (default: latest)' },
+      { name: 'access', type: 'string', choices: ['public', 'restricted'], description: 'Package access level' },
+      { name: 'json', type: 'boolean', description: 'Output in JSON format' },
+    ],
+    examples: [
+      'kb release publish',
+      'kb release publish --scope @kb-labs/core',
+      'kb release publish --otp 123456',
+      'kb release publish --dry-run',
+      'kb release publish --tag next --access public',
+    ],
+    handler: './cli/commands/publish#publishCommand',
+  },
+  {
+    manifestVersion: '1.0',
     id: 'rollback',
     group: 'release',
     describe: 'Rollback last release',
@@ -160,6 +183,10 @@ export const manifest = defineManifest({
     name: 'Release Manager',
     description: 'Plan, execute, and audit releases across the KB Labs workspace.',
     tags: ['release', 'publish', 'versioning'],
+  },
+  platform: {
+    requires: ['storage'],
+    optional: ['llm', 'cache', 'analytics', 'logger'],
   },
   setup: {
     handler: './setup/handler.js#run',

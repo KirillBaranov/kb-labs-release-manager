@@ -23,17 +23,20 @@ export interface PlannerOptions {
 export async function planRelease(options: PlannerOptions): Promise<ReleasePlan> {
   const { cwd, config, scope, bumpOverride } = options;
 
+
   // Discover packages
   const packages = await discoverPackages(cwd, scope);
 
-  // Detect modified packages
-  const git = simpleGit(cwd);
+  // Detect modified packages - with timeout to prevent hanging
+  const git = simpleGit(cwd, { timeout: { block: 10000 } }); // 10 second timeout
+
   const modifiedPackages = await detectModifiedPackages(git, packages);
 
   // Compute version bumps
   let planPackages: PackageVersion[] = [];
   for (const pkg of modifiedPackages) {
     const bump = bumpOverride || config.bump || 'auto';
+
     const nextVersion = await computeNextVersion(
       pkg.path,
       pkg.currentVersion,
@@ -82,13 +85,17 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
   // Read config for customization (optional)
   const config = await readReleaseConfig(cwd);
 
-  // Determine if scope is a package name (e.g., @kb-labs/pkg) or a glob pattern (e.g., packages/*)
-  const isPackageName = scope && (scope.startsWith('@') || !scope.includes('/') || !scope.includes('*'));
+  // Determine scope type:
+  // 1. Exact package name: @kb-labs/core, my-package
+  // 2. Wildcard pattern: @kb-labs/core-*, packages/*
+  // 3. Path pattern: packages/*/src
+  const isExactPackageName = scope && !scope.includes('*') && (scope.startsWith('@') || !scope.includes('/'));
+  const isWildcardPattern = scope && scope.includes('*');
 
   // Find package.json files - support nested monorepos
-  const pattern = scope && !isPackageName
-    ? `${scope}/**/package.json`
-    : (config.release?.packagesPattern || '**/package.json');
+  // For wildcard patterns with package names (like @kb-labs/core-*), we need to find all packages first
+  // then filter by name regex, because glob patterns work on file paths, not package names
+  const pattern = config.release?.packagesPattern || '**/package.json';
 
   const packageJsonPaths = await globby(pattern, {
     cwd,
@@ -104,7 +111,13 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
     ],
   });
 
-  for (const packageJsonPath of packageJsonPaths) {
+  for (let i = 0; i < packageJsonPaths.length; i++) {
+    // Освобождаем event loop каждые 10 файлов, чтобы спиннер мог обновиться
+    if (i % 10 === 0) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+
+    const packageJsonPath = packageJsonPaths[i]!;
     const packagePath = join(packageJsonPath, '..');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
 
@@ -118,9 +131,22 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
       continue;
     }
 
-    // If scope is a package name, filter by exact match
-    if (isPackageName && packageJson.name !== scope) {
+    // If scope is exact package name, filter by exact match
+    if (isExactPackageName && packageJson.name !== scope) {
       continue;
+    }
+
+    // If scope is wildcard pattern, filter by glob match
+    if (isWildcardPattern && scope) {
+      // Convert package name to match pattern (e.g., @kb-labs/core-sys matches @kb-labs/core-*)
+      // Escape regex special chars except *, then convert * to .*
+      const scopePattern = scope
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')  // Escape special chars
+        .replace(/\*/g, '.*');                    // Convert * to .*
+      const regex = new RegExp(`^${scopePattern}$`);
+      if (!regex.test(packageJson.name)) {
+        continue;
+      }
     }
 
     packages.push({
@@ -153,8 +179,10 @@ async function detectModifiedPackages(
   git: ReturnType<typeof simpleGit>,
   packages: PackageVersion[]
 ): Promise<PackageVersion[]> {
+
   // Get list of modified files
   const status = await git.status();
+
   const diffSummary = await git.diffSummary(['HEAD']);
 
   const modifiedPaths = [
@@ -162,11 +190,19 @@ async function detectModifiedPackages(
     ...diffSummary.files.map(f => f.file),
   ];
 
+
   // Find packages that have changes
   const modified: PackageVersion[] = [];
-  for (const pkg of packages) {
+  for (let i = 0; i < packages.length; i++) {
+    // Освобождаем event loop каждые 10 пакетов
+    if (i % 10 === 0) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+
+    const pkg = packages[i]!;
+
     // Check if any file in this package is modified
-    const packageModified = modifiedPaths.some(path => 
+    const packageModified = modifiedPaths.some(path =>
       path.startsWith(pkg.path) || path.includes(pkg.name)
     );
 
@@ -174,6 +210,7 @@ async function detectModifiedPackages(
       modified.push(pkg);
     }
   }
+
 
   // If no modified packages detected, include all packages (for initial release)
   return modified.length > 0 ? modified : packages;
@@ -185,33 +222,39 @@ async function computeNextVersion(
   bump: VersionBump,
   git: ReturnType<typeof simpleGit>
 ): Promise<string> {
+
   // If auto, detect from conventional commits
   if (bump === 'auto') {
     const detectedBump = await detectVersionFromCommits(git, packagePath);
-    return semver.inc(currentVersion, detectedBump) || currentVersion;
+    const result = semver.inc(currentVersion, detectedBump) || currentVersion;
+    return result;
   }
 
   // Manual bump
-  return semver.inc(currentVersion, bump) || currentVersion;
+  const result = semver.inc(currentVersion, bump) || currentVersion;
+  return result;
 }
 
 async function detectVersionFromCommits(
   git: ReturnType<typeof simpleGit>,
   packagePath: string
 ): Promise<'major' | 'minor' | 'patch'> {
+
   try {
     // Get recent commits for this package
+
     const log = await git.log({
       maxCount: 50,
       file: packagePath,
     });
+
 
     let hasMinor = false;
     let hasBreaking = false;
 
     for (const commit of log.all) {
       const message = commit.message.toLowerCase();
-      
+
       // Detect conventional commits
       if (message.includes('!:')) {
         hasBreaking = true;
@@ -233,7 +276,7 @@ async function detectVersionFromCommits(
 
     // Default to patch
     return 'patch';
-  } catch {
+  } catch (error) {
     // On error, default to patch
     return 'patch';
   }
