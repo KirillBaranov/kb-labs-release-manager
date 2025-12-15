@@ -17,7 +17,7 @@ type ReleaseReportResult = CommandResult & {
   report?: ReleaseReport;
 };
 
-export const reportCommand = defineCommand<any, ReleaseReportFlags, ReleaseReportResult>({
+export const reportCommand = defineCommand({
   name: 'release:report',
   flags: {
     json: {

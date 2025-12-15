@@ -4,23 +4,17 @@
  */
 
 import { join } from 'node:path';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { defineCommand, type CommandResult, useLLM } from '@kb-labs/sdk';
+import { stat, writeFile, mkdir } from 'node:fs/promises';
+import { defineCommand, type CommandResult, useLLM, useLoader, displayArtifacts, type ArtifactInfo } from '@kb-labs/sdk';
 import { loadReleaseConfig } from '@kb-labs/release-manager-core';
 import {
-  resolveGitRange,
-  parseCommits,
-  formatAsJson,
-  createReleaseManifest,
-  detectProvider,
-  enhanceChangeWithLinks,
-  formatPackageWithLLM,
-  loadTemplate,
-  packageToTemplateData,
+  generateChangelog,
+  generateSimpleChangelog,
   type Change,
   type ReleaseManifest,
-  type PackageRelease,
+  type ChangelogPackageInfo,
 } from '@kb-labs/release-manager-changelog';
+import { planRelease } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
@@ -43,47 +37,7 @@ type ReleaseChangelogResult = CommandResult & {
   files?: string[];
 };
 
-/**
- * Helper: Format simple markdown changelog
- */
-function formatSimpleMarkdown(changes: Change[], level: string, locale: 'en' | 'ru'): string {
-  const lines: string[] = [];
-  lines.push(locale === 'ru' ? '# Журнал изменений\n' : '# Changelog\n');
-  
-  if (changes.length === 0) {
-    lines.push('_No changes_\n');
-    return lines.join('\n');
-  }
-  
-  // Group by type
-  const grouped: Record<string, Change[]> = {};
-  for (const change of changes) {
-    const type = change.type;
-    if (!grouped[type]) {
-      grouped[type] = [];
-    }
-    grouped[type].push(change);
-  }
-  
-  // Render grouped
-  for (const [type, changesList] of Object.entries(grouped)) {
-    const title = type.charAt(0).toUpperCase() + type.slice(1);
-    lines.push(`## ${title}\n`);
-    
-    for (const change of changesList) {
-      let line = `- ${change.subject}`;
-      if (level !== 'compact' && change.providerLinks?.commit) {
-        line += ` ([${change.sha.substring(0, 7)}](${change.providerLinks.commit}))`;
-      }
-      lines.push(line);
-    }
-    lines.push('');
-  }
-  
-  return lines.join('\n');
-}
-
-export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, ReleaseChangelogResult>({
+export const changelogCommand = defineCommand({
   name: 'release:changelog',
   flags: {
     scope: {
@@ -140,180 +94,203 @@ export const changelogCommand = defineCommand<any, ReleaseChangelogFlags, Releas
     includeFlags: true,
   },
   async handler(ctx: any, argv: string[], flags: any) {
-    // Get LLM via useLLM() helper
-    // In child process, this returns LLMProxy which forwards calls to parent OpenAI LLM via IPC
-    const llm = useLLM();
-    const platform = llm ? { llm } : undefined;
-
-    // Debug: Check if LLM is available
-    ctx.logger?.debug('LLM availability check', {
-      hasLLM: !!llm,
-      llmConstructor: llm?.constructor?.name,
-      hasPlatform: !!platform,
-    });
-
     const cwd = ctx.cwd || process.cwd();
     const repoRoot = await findRepoRoot(cwd);
 
+    // === Stage 1: Load configuration ===
+    const loader = useLoader('Loading configuration...');
+    loader.start();
     ctx.tracker.checkpoint('config');
 
-    // Load configuration
     const { config } = await loadReleaseConfig({
       cwd: repoRoot,
       profileId: flags.profile,
     });
 
-    ctx.tracker.checkpoint('range');
+    // === Stage 2: Discover packages ===
+    loader.update({ text: 'Discovering packages...' });
+    ctx.tracker.checkpoint('plan');
 
-    // Resolve git range
-    const range = await resolveGitRange({
+    const plan = await planRelease({
       cwd: repoRoot,
-      from: flags.from,
-      to: flags.to,
-      sinceTag: flags['since-tag'],
-      autoUnshallow: config.git?.autoUnshallow,
-      requireSignedTags: config.git?.requireSignedTags,
+      config,
+      scope: flags.scope,
     });
 
-    ctx.tracker.checkpoint('parse');
+    if (plan.packages.length === 0) {
+      loader.fail(`No packages found matching scope: ${flags.scope || 'all'}`);
+      return { ok: false };
+    }
 
-    // Detect git provider
-    const provider = await detectProvider(repoRoot, config.git?.baseUrl);
+    // Convert plan packages to ChangelogPackageInfo
+    const packages: ChangelogPackageInfo[] = plan.packages.map(pkg => ({
+      name: pkg.name,
+      path: pkg.path,
+      currentVersion: pkg.currentVersion,
+      nextVersion: pkg.nextVersion,
+      bump: pkg.bump === 'auto' ? 'patch' : pkg.bump,
+    }));
 
-    // Parse commits
-    const changes = await parseCommits({
-      cwd: repoRoot,
-      from: range.from,
-      to: range.to,
-      ignoreAuthors: config.changelog?.ignoreAuthors || [],
-      includeTypes: config.changelog?.includeTypes as string[] | undefined,
-      excludeTypes: config.changelog?.excludeTypes as string[] | undefined,
-      collapseMerges: config.changelog?.collapseMerges,
-      collapseReverts: config.changelog?.collapseReverts,
-      preferMergeSummary: config.changelog?.preferMergeSummary,
-    });
+    // Determine git working directory (for submodule support)
+    let gitCwd = repoRoot;
+    if (flags.scope && plan.packages.length > 0 && plan.packages[0]) {
+      try {
+        gitCwd = await findRepoRoot(plan.packages[0].path);
+      } catch {
+        gitCwd = plan.packages[0].path;
+      }
+    }
 
-    // Filter breaking changes if requested
-    const filteredChanges = flags['breaking-only']
-      ? changes.filter(change => change.breaking)
-      : changes;
+    // === Stage 3: Generate changelog ===
+    loader.update({ text: 'Generating changelog...' });
+    ctx.tracker.checkpoint('generate');
 
-    // Enhance changes with provider links
-    const enhancedChanges = filteredChanges.map(change => enhanceChangeWithLinks(change, provider));
-
-    ctx.tracker.checkpoint('format');
-
-    // Format output
+    const llm = useLLM();
+    const platform = llm ? { llm } : undefined;
     const format = flags.format || config.changelog?.format || 'both';
     const level = flags.level || config.changelog?.level || 'standard';
-    const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
 
-    let markdown = '';
-    let jsonManifest: ReleaseManifest | null = null;
+    let result;
+    try {
+      result = await generateChangelog({
+        repoRoot,
+        gitCwd,
+        packages,
+        range: {
+          from: flags.from,
+          to: flags.to,
+          sinceTag: flags['since-tag'],
+        },
+        changelog: {
+          template: flags.template || config.changelog?.template,
+          locale: config.changelog?.locale as 'en' | 'ru',
+          metadata: config.changelog?.metadata,
+          ignoreAuthors: config.changelog?.ignoreAuthors,
+          includeTypes: config.changelog?.includeTypes as string[],
+          excludeTypes: config.changelog?.excludeTypes as string[],
+          collapseMerges: config.changelog?.collapseMerges,
+          collapseReverts: config.changelog?.collapseReverts,
+          preferMergeSummary: config.changelog?.preferMergeSummary,
+        },
+        git: {
+          autoUnshallow: config.git?.autoUnshallow,
+          requireSignedTags: config.git?.requireSignedTags,
+          baseUrl: config.git?.baseUrl ?? undefined,
+        },
+        platform,
+        onProgress: (message) => loader.update({ text: message }),
+      });
+    } catch (error) {
+      loader.fail('Failed to generate changelog');
+      ctx.logger?.error('Changelog generation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
-    if (format === 'md' || format === 'both') {
-      // Create synthetic PackageRelease from changes
-      const syntheticRelease: PackageRelease = {
-        name: 'Changelog',
-        prev: range.from.substring(0, 7),
-        next: range.to.substring(0, 7),
-        bump: 'none',
-        reason: 'manual',
-        breaking: enhancedChanges.filter(c => c.breaking).flatMap(c => c.breaking!),
-        changes: enhancedChanges,
+      // Fallback to simple changelog
+      const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
+      const markdown = generateSimpleChangelog(packages, locale);
+
+      result = {
+        markdown,
+        manifest: null,
+        changes: [],
+        range: { from: 'unknown', to: 'HEAD' },
+        packages: [],
       };
-
-      // Check if template specified
-      const templateName = flags.template || config.changelog?.template;
-
-      if (templateName) {
-        // Use custom template
-        const template = await loadTemplate(templateName, repoRoot);
-        const templateData = packageToTemplateData(syntheticRelease, locale, config.changelog?.metadata);
-
-        // Templates can be sync or async
-        const result = template.render(templateData, platform);
-        markdown = typeof result === 'string' ? result : await result;
-      } else {
-        // Default: Use LLM formatter with graceful degradation
-        markdown = await formatPackageWithLLM(platform, syntheticRelease, locale);
-      }
     }
 
-    if (format === 'json' || format === 'both') {
-      const packages: PackageRelease[] = [];
-      jsonManifest = createReleaseManifest(range, packages);
-      jsonManifest = JSON.parse(formatAsJson(jsonManifest));
-    }
+    // Filter changes if breaking-only flag is set
+    const displayChanges = flags['breaking-only']
+      ? result.changes.filter(c => c.breaking)
+      : result.changes;
 
+    // === Stage 4: Save outputs ===
+    loader.update({ text: 'Saving artifacts...' });
     ctx.tracker.checkpoint('save');
 
-    // Save outputs
+    const outputDir = join(repoRoot, '.kb', 'release');
+    const artifacts: ArtifactInfo[] = [];
+
     if (!flags.json) {
-      const outputDir = join(repoRoot, '.kb', 'release');
       await mkdir(outputDir, { recursive: true });
 
-      if (markdown) {
-        await writeFile(join(outputDir, 'CHANGELOG.md'), markdown, 'utf-8');
+      if (result.markdown && (format === 'md' || format === 'both')) {
+        const changelogPath = join(outputDir, 'CHANGELOG.md');
+        await writeFile(changelogPath, result.markdown, 'utf-8');
+        const stats = await stat(changelogPath);
+        artifacts.push({
+          name: 'Changelog',
+          path: changelogPath,
+          size: stats.size,
+          modified: stats.mtime,
+          description: 'Generated changelog in Markdown format',
+        });
       }
 
-      if (jsonManifest) {
-        await writeFile(join(outputDir, 'release.manifest.json'), JSON.stringify(jsonManifest, null, 2), 'utf-8');
+      if (result.manifest && (format === 'json' || format === 'both')) {
+        const manifestPath = join(outputDir, 'release.manifest.json');
+        await writeFile(manifestPath, JSON.stringify(result.manifest, null, 2), 'utf-8');
+        const stats = await stat(manifestPath);
+        artifacts.push({
+          name: 'Manifest',
+          path: manifestPath,
+          size: stats.size,
+          modified: stats.mtime,
+          description: 'Release manifest in JSON format',
+        });
       }
     }
 
+    loader.succeed('Changelog generated successfully');
     ctx.tracker.checkpoint('complete');
 
-    ctx.logger?.info('Release changelog completed', { 
-      changesCount: enhancedChanges.length,
+    ctx.logger?.info('Release changelog completed', {
+      changesCount: displayChanges.length,
+      packagesCount: packages.length,
       format,
       level,
     });
 
+    const formatLabel = format === 'both' ? 'Markdown + JSON' : format;
+
     if (flags.json) {
-      ctx.output?.json({
-        changesCount: enhancedChanges.length,
-        range,
-        markdown: format === 'md' || format === 'both' ? markdown : undefined,
-        manifest: format === 'json' || format === 'both' ? jsonManifest : undefined,
+      ctx.ui.json({
+        changesCount: displayChanges.length,
+        packagesCount: packages.length,
+        range: result.range,
+        markdown: format === 'md' || format === 'both' ? result.markdown : undefined,
+        manifest: format === 'json' || format === 'both' ? result.manifest : undefined,
+        artifacts: artifacts.map(a => ({ name: a.name, path: a.path, size: a.size })),
       });
     } else {
-      if (!ctx.output) {
-        throw new Error('Output not available');
+      // Build artifacts section if any were created
+      const sections: Array<{ header?: string; items: string[] }> = [];
+      if (artifacts.length > 0) {
+        const artifactsLines = displayArtifacts(artifacts, {
+          showSize: true,
+          showTime: true,
+          showDescription: true,
+          maxItems: 10,
+          title: '',
+        });
+        sections.push({
+          header: 'Artifacts',
+          items: artifactsLines,
+        });
       }
 
-      const formatLabel = format === 'both' ? 'Markdown + JSON' : format;
-      const outputLabel = format.includes('md') && format.includes('json')
-        ? '.kb/release/CHANGELOG.md + release.manifest.json'
-        : format === 'md'
-        ? '.kb/release/CHANGELOG.md'
-        : '.kb/release/release.manifest.json';
-
-      const sections: Array<{ header?: string; items: string[] }> = [
-        {
-          header: 'Summary',
-          items: [
-            `Range: ${range.from}..${range.to}`,
-            `Commits: ${enhancedChanges.length}`,
-            `Format: ${formatLabel}`,
-            `Level: ${level}`,
-          ],
+      ctx.ui.success('Changelog Generated', {
+        summary: {
+          'Packages': packages.map(p => p.name).join(', '),
+          'Range': `${result.range.from.substring(0, 7)}..${result.range.to.substring(0, 7)}`,
+          'Commits': displayChanges.length,
+          'Format': formatLabel,
         },
-        {
-          header: 'Output',
-          items: [outputLabel],
-        },
-      ];
-
-      const outputText = ctx.ui.sideBox({
-        title: 'Changelog Generated',
         sections,
-        status: 'success',
         timing: ctx.tracker.total(),
       });
-      ctx.ui.write(outputText);
     }
 
-    return { ok: true, changesCount: enhancedChanges.length };
+    return { ok: true, changesCount: displayChanges.length, artifacts };
   },
 });

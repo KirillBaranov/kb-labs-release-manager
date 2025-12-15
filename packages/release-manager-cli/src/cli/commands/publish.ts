@@ -10,18 +10,17 @@
  */
 
 import { defineCommand, type CommandResult, type PluginContext, useLoader } from '@kb-labs/sdk';
-import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import * as readline from 'node:readline/promises';
+import { loadReleaseConfig, planRelease } from '@kb-labs/release-manager-core';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
+import { findRepoRoot } from '../../shared/utils';
+import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 
 interface PublishFlags {
   scope?: string;
   otp?: string;
   'dry-run'?: boolean;
   tag?: string;
-  access?: 'public' | 'restricted';
+  access?: string;
   json?: boolean;
 }
 
@@ -38,7 +37,7 @@ interface PublishResult extends CommandResult {
   timingMs?: number;
 }
 
-export const publishCommand = defineCommand<any, PublishFlags, PublishResult>({
+export const publishCommand = defineCommand({
   name: 'publish',
   flags: {
     scope: { type: 'string', description: 'Package scope' },
@@ -62,18 +61,38 @@ export const publishCommand = defineCommand<any, PublishFlags, PublishResult>({
       throw new Error('UI not available');
     }
 
-    ctx.logger?.info('Searching for packages to publish', { scope, cwd: ctx.cwd });
+    const cwd = ctx.cwd || process.cwd();
+    const repoRoot = await findRepoRoot(cwd);
 
-    // Find packages to publish
-    const packages = await findPackagesToPublish(ctx.cwd, scope);
+    ctx.logger?.info('Searching for packages to publish', { scope, cwd: repoRoot });
+
+    // Load release configuration and discover packages using planRelease
+    const discoveryLoader = useLoader('Discovering packages...');
+    discoveryLoader.start();
+
+    const { config } = await loadReleaseConfig({ cwd: repoRoot });
+    const plan = await planRelease({
+      cwd: repoRoot,
+      config,
+      scope,
+    });
+
+    const packages = plan.packages.map(pkg => ({
+      name: pkg.name,
+      version: pkg.nextVersion,
+      path: pkg.path,
+    }));
+
+    discoveryLoader.succeed(`Found ${packages.length} package(s)`);
 
     if (packages.length === 0) {
       ctx.logger?.warn('No packages found to publish', { scope });
       if (json) {
-        ctx.output?.json({ ok: false, error: 'No packages found to publish' });
-        return { ok: false, error: 'No packages found to publish' };
+        ctx.ui.json({ ok: false, error: 'No packages found to publish' });
+      } else {
+        ctx.ui.write?.(`No packages found to publish${scope ? ` matching scope: ${scope}` : ''}`);
       }
-      return { ok: false };
+      return { ok: false, error: 'No packages found to publish' };
     }
 
     ctx.logger?.info('Found packages to publish', {
@@ -81,127 +100,42 @@ export const publishCommand = defineCommand<any, PublishFlags, PublishResult>({
       packages: packages.map((p) => `${p.name}@${p.version}`),
     });
 
-    // Publish each package
-    let otp = initialOtp;
-    const results: Array<{ name: string; version: string; success: boolean; error?: string }> = [];
-
-    for (const pkg of packages) {
-      ctx.logger?.info('Publishing package', { name: pkg.name, version: pkg.version });
-
-      const loader = useLoader(`Publishing ${pkg.name}@${pkg.version}...`);
-      loader.start();
-
-      let attempts = 0;
-      const maxAttempts = 3;
-      let published = false;
-
-      while (!published && attempts < maxAttempts) {
-        attempts++;
-
-        try {
-          await publishPackage({
-            packagePath: pkg.path,
-            otp,
-            dryRun,
-            tag,
-            access,
-          });
-
-          published = true;
-          results.push({ name: pkg.name, version: pkg.version, success: true });
-
-          const successMsg = dryRun
-            ? `Dry-run succeeded for ${pkg.name}@${pkg.version}`
-            : `Published ${pkg.name}@${pkg.version}`;
-
-          loader.succeed(successMsg);
-          ctx.logger?.info('Package published successfully', {
-            name: pkg.name,
-            version: pkg.version,
-            dryRun,
-          });
-        } catch (error: any) {
-          const errorMessage = error.message || String(error);
-
-          // Check if OTP is required
-          if (errorMessage.includes('EOTP') || errorMessage.includes('one-time password')) {
-            if (attempts < maxAttempts) {
-              loader.fail('2FA required - please enter your authenticator code');
-              ctx.logger?.warn('OTP required for publishing', {
-                name: pkg.name,
-                attempt: attempts,
-              });
-
-              // Prompt for OTP
-              const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout,
-              });
-
-              try {
-                otp = await rl.question('Enter OTP code: ');
-                rl.close();
-
-                if (!otp || otp.trim().length !== 6) {
-                  ctx.logger?.warn('Invalid OTP code provided', { length: otp?.trim().length });
-                  otp = undefined;
-                  continue;
-                }
-
-                ctx.logger?.debug('Retrying with OTP');
-              } catch (e) {
-                rl.close();
-                throw e;
-              }
-            } else {
-              loader.fail('Max OTP attempts reached');
-              ctx.logger?.error('Max OTP attempts reached', {
-                name: pkg.name,
-                attempts: maxAttempts,
-              });
-              results.push({ name: pkg.name, version: pkg.version, success: false, error: 'Max OTP attempts reached' });
-              break;
-            }
-          } else {
-            // Other error - don't retry
-            loader.fail(`Failed: ${errorMessage}`);
-            ctx.logger?.error('Package publish failed', {
-              name: pkg.name,
-              version: pkg.version,
-              error: errorMessage,
-            });
-            results.push({ name: pkg.name, version: pkg.version, success: false, error: errorMessage });
-            break;
-          }
-        }
-      }
-    }
+    // Publish packages with interactive OTP support
+    const result = await publishPackagesWithOTP({
+      packages,
+      dryRun,
+      otp: initialOtp,
+      tag,
+      access,
+      ui: ctx.ui,
+      logger: ctx.logger,
+    });
 
     // Summary
-    const successful = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
+    const successful = result.results.filter((r) => r.success).length;
+    const failed = result.results.filter((r) => !r.success).length;
     const timingMs = 0; // Timing tracking not yet implemented
 
     ctx.logger?.info('Publish operation completed', {
-      total: results.length,
+      total: result.results.length,
       successful,
       failed,
     });
 
     const publishResult: PublishResult = {
       ok: failed === 0,
-      published: results.filter((r) => r.success).map((r) => ({ name: r.name, version: r.version })),
-      failed: results.filter((r) => !r.success).map((r) => ({
+      published: result.results.filter((r) => r.success).map((r) => ({ name: r.name, version: r.version })),
+      failed: result.results.filter((r) => !r.success).map((r) => ({
         name: r.name,
         version: r.version,
         error: r.error || 'Unknown error',
       })),
-      summary: { total: results.length, successful, failed },
+      summary: { total: result.results.length, successful, failed },
       timingMs,
     };
 
     if (json) {
-      ctx.output?.json(publishResult);
+      ctx.ui.json(publishResult);
       return publishResult;
     }
 
@@ -209,9 +143,13 @@ export const publishCommand = defineCommand<any, PublishFlags, PublishResult>({
     const sections: Array<{ header?: string; items: string[] }> = [];
 
     if (successful > 0) {
-      const successItems = results
-        .filter((r) => r.success)
-        .map((r) => `${ctx.ui.symbols.success} ${r.name}@${r.version}`);
+      const successItems: string[] = [];
+      for (const r of result.results.filter((r) => r.success)) {
+        successItems.push(`${ctx.ui.symbols.success} ${r.name}@${r.version}`);
+        // Add npm link for scoped packages
+        const npmUrl = `https://www.npmjs.com/package/${r.name}`;
+        successItems.push(`  └─ ${npmUrl}`);
+      }
       sections.push({
         header: 'Successfully published',
         items: successItems,
@@ -219,7 +157,7 @@ export const publishCommand = defineCommand<any, PublishFlags, PublishResult>({
     }
 
     if (failed > 0) {
-      const failItems = results
+      const failItems = result.results
         .filter((r) => !r.success)
         .map((r) => `${ctx.ui.symbols.error} ${r.name}@${r.version} - ${r.error}`);
       sections.push({
@@ -242,124 +180,3 @@ export const publishCommand = defineCommand<any, PublishFlags, PublishResult>({
     return publishResult;
   },
 });
-
-interface PublishOptions {
-  packagePath: string;
-  otp?: string;
-  dryRun?: boolean;
-  tag?: string;
-  access?: string;
-}
-
-/**
- * Publish a single package using npm CLI
- */
-function publishPackage(options: PublishOptions): Promise<void> {
-  const { packagePath, otp, dryRun, tag, access } = options;
-
-  return new Promise((resolve, reject) => {
-    const args = ['publish'];
-
-    if (dryRun) {
-      args.push('--dry-run');
-    }
-
-    if (otp) {
-      args.push(`--otp=${otp}`);
-    }
-
-    if (tag) {
-      args.push(`--tag=${tag}`);
-    }
-
-    if (access) {
-      args.push(`--access=${access}`);
-    }
-
-    const child = spawn('npm', args, {
-      cwd: packagePath,
-      stdio: ['inherit', 'pipe', 'pipe'],
-      shell: true,
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout?.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr?.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        const errorOutput = stderr || stdout;
-        reject(new Error(errorOutput));
-      }
-    });
-
-    child.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
-
-interface PackageInfo {
-  name: string;
-  version: string;
-  path: string;
-}
-
-/**
- * Find packages to publish based on scope filter
- */
-async function findPackagesToPublish(cwd: string, scope?: string): Promise<PackageInfo[]> {
-  const packages: PackageInfo[] = [];
-
-  // If scope is provided, assume it's a specific package path or name
-  if (scope) {
-    // Try as direct path first
-    const pkgPath = resolve(cwd, scope);
-    const pkgJsonPath = resolve(pkgPath, 'package.json');
-
-    if (existsSync(pkgJsonPath)) {
-      const pkgJson = await import(pkgJsonPath, { with: { type: 'json' } });
-      packages.push({
-        name: pkgJson.default.name,
-        version: pkgJson.default.version,
-        path: pkgPath,
-      });
-    } else {
-      // Try to find by package name in workspace
-      // For now, just check current directory
-      const currentPkgJson = resolve(cwd, 'package.json');
-      if (existsSync(currentPkgJson)) {
-        const pkgJson = await import(currentPkgJson, { with: { type: 'json' } });
-        if (pkgJson.default.name === scope || pkgJson.default.name.includes(scope)) {
-          packages.push({
-            name: pkgJson.default.name,
-            version: pkgJson.default.version,
-            path: cwd,
-          });
-        }
-      }
-    }
-  } else {
-    // No scope - publish current directory
-    const pkgJsonPath = resolve(cwd, 'package.json');
-    if (existsSync(pkgJsonPath)) {
-      const pkgJson = await import(pkgJsonPath, { with: { type: 'json' } });
-      packages.push({
-        name: pkgJson.default.name,
-        version: pkgJson.default.version,
-        path: cwd,
-      });
-    }
-  }
-
-  return packages;
-}

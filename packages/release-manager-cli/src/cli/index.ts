@@ -2,6 +2,7 @@
 export * from './commands/changelog';
 export * from './commands/plan';
 export * from './commands/preview';
+export * from './commands/publish';
 export * from './commands/report';
 export * from './commands/rollback';
 export * from './commands/run';

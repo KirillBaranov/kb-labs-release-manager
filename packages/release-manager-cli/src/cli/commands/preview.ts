@@ -23,7 +23,7 @@ type ReleasePreviewResult = CommandResult & {
   };
 };
 
-export const previewCommand = defineCommand<any, ReleasePreviewFlags, ReleasePreviewResult>({
+export const previewCommand = defineCommand({
   name: 'release:preview',
   flags: {
     scope: {

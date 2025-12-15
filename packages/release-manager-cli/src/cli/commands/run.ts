@@ -4,15 +4,15 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineCommand, type CommandResult, useLLM, useLoader, discoverArtifacts } from '@kb-labs/sdk';
+import { defineCommand, type CommandResult, useLLM, useLoader } from '@kb-labs/sdk';
 import {
   loadReleaseConfig,
   planRelease,
   saveSnapshot,
   restoreSnapshot,
-  publishPackages,
   copyChangelogToPackages,
   commitAndTagRelease,
+  updatePackageVersions,
   renderJson,
   renderMarkdown,
   renderText,
@@ -20,17 +20,13 @@ import {
   type VersionBump,
 } from '@kb-labs/release-manager-core';
 import {
-  resolveGitRange,
-  parseCommits,
-  createReleaseManifest,
-  detectProvider,
-  enhanceChangeWithLinks,
-  loadTemplate,
-  packageToTemplateData,
-  type PackageRelease,
+  generateChangelog,
+  generateSimpleChangelog,
+  type ChangelogPackageInfo,
 } from '@kb-labs/release-manager-changelog';
 import { runChecks, createCheckRegistry } from '@kb-labs/release-manager-checks';
 import { findRepoRoot } from '../../shared/utils';
+import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type ReleaseRunFlags = {
@@ -47,7 +43,7 @@ type ReleaseRunResult = CommandResult & {
   report?: ReleaseReport;
 };
 
-export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>({
+export const runCommand = defineCommand({
   name: 'release:run',
   flags: {
     scope: {
@@ -162,11 +158,11 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
       const failedChecks = Object.entries(checks)
         .filter(([_, result]) => result && !result.ok)
         .map(([id]) => id);
-      
+
       if (failedChecks.length > 0) {
         // Rollback
         await restoreSnapshot(repoRoot);
-        
+
         const report: ReleaseReport = {
           schemaVersion: '1.0',
           ts: new Date().toISOString(),
@@ -188,9 +184,9 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         };
 
         await writeReport(repoRoot, report);
-        
+
         ctx.logger?.warn('Release run failed checks', { failedChecks });
-        
+
         // Return object with ok: false for quality gate failure
         // defineCommand will convert to exit code 1, but we need special handling
         // For now, return 2 directly to indicate quality gate failure
@@ -199,36 +195,33 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         } else {
           ctx.output?.error(`Pre-release checks failed: ${failedChecks.join(', ')}`);
         }
-        
+
         // Return exit code 2 for quality gate failure
         return 2;
       }
     }
 
-    // Publish packages
-    const publishLoader = useLoader(dryRun
-      ? `Simulating publish for ${plan.packages.length} package(s) (dry-run)...`
-      : `Publishing ${plan.packages.length} package(s)...`
-    );
-    publishLoader.start();
+    // Update package.json versions BEFORE generating changelog
+    // This ensures changelog shows correct version that will be published
+    const versionLoader = useLoader('Updating package versions...');
+    versionLoader.start();
 
-    const publishResult = await publishPackages({
-      cwd: repoRoot,
-      plan,
-      dryRun,
-    });
+    const versionUpdates = await updatePackageVersions(plan);
+    const failedVersionUpdates = versionUpdates.filter(u => !u.updated);
 
-    if (publishResult.errors.length > 0) {
-      publishLoader.fail(`Publishing failed with ${publishResult.errors.length} error(s)`);
-    } else if (dryRun) {
-      publishLoader.succeed(`Dry-run completed for ${publishResult.skipped.length} package(s)`);
-    } else {
-      publishLoader.succeed(`Published ${publishResult.published.length} package(s)`);
+    if (failedVersionUpdates.length > 0) {
+      versionLoader.fail(`Failed to update ${failedVersionUpdates.length} package version(s)`);
+      // Rollback and exit
+      await restoreSnapshot(repoRoot);
+      return { ok: false, error: 'Version update failed' };
     }
 
-    ctx.tracker.checkpoint('publish');
+    versionLoader.succeed(`Updated ${versionUpdates.length} package version(s)`);
 
-    // Generate changelog using full changelog generation with templates
+    ctx.tracker.checkpoint('versions');
+
+    // Generate changelog BEFORE publishing (so it's included in the package)
+    // Generate changelog using shared changelog generator
     const changelogLoader = useLoader('Generating changelog...');
     changelogLoader.start();
 
@@ -236,102 +229,55 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
     const platform = llm ? { llm } : undefined;
     const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
 
+    // Determine git working directory (for submodule support)
+    let gitCwd = repoRoot;
+    if (flags.scope && plan.packages.length > 0 && plan.packages[0]) {
+      try {
+        gitCwd = await findRepoRoot(plan.packages[0].path);
+      } catch {
+        gitCwd = plan.packages[0].path;
+      }
+    }
+
+    // Convert plan packages to ChangelogPackageInfo
+    const changelogPackages: ChangelogPackageInfo[] = plan.packages.map(pkg => ({
+      name: pkg.name,
+      path: pkg.path,
+      currentVersion: pkg.currentVersion,
+      nextVersion: pkg.nextVersion,
+      bump: pkg.bump === 'auto' ? 'patch' : pkg.bump,
+    }));
+
     let changelog = '';
     try {
-      // Determine git directory based on scope
-      // If scope is set, find git root starting from package directory (supports submodules)
-      // If no scope, use repo root
-      let gitCwd = repoRoot;
-      if (flags.scope && plan.packages.length > 0 && plan.packages[0]) {
-        try {
-          gitCwd = await findRepoRoot(plan.packages[0].path);
-        } catch {
-          // Fallback to package path if git root not found
-          gitCwd = plan.packages[0].path;
-        }
-      }
-
-      // Resolve git range
-      const range = await resolveGitRange({
-        cwd: gitCwd,
-        from: undefined,
-        to: 'HEAD',
-        autoUnshallow: config.git?.autoUnshallow,
-        requireSignedTags: config.git?.requireSignedTags,
+      const result = await generateChangelog({
+        repoRoot,
+        gitCwd,
+        packages: changelogPackages,
+        range: {
+          to: 'HEAD',
+        },
+        changelog: {
+          template: config.changelog?.template ?? undefined,
+          locale: config.changelog?.locale as 'en' | 'ru',
+          metadata: config.changelog?.metadata,
+          ignoreAuthors: config.changelog?.ignoreAuthors,
+          includeTypes: config.changelog?.includeTypes as string[],
+          excludeTypes: config.changelog?.excludeTypes as string[],
+          collapseMerges: config.changelog?.collapseMerges,
+          collapseReverts: config.changelog?.collapseReverts,
+          preferMergeSummary: config.changelog?.preferMergeSummary,
+        },
+        git: {
+          autoUnshallow: config.git?.autoUnshallow,
+          requireSignedTags: config.git?.requireSignedTags,
+          baseUrl: config.git?.baseUrl ?? undefined,
+        },
+        platform,
+        onProgress: (message) => changelogLoader.update({ text: message }),
       });
 
-      // Detect git provider
-      const provider = await detectProvider(gitCwd, config.git?.baseUrl);
-
-      // Parse commits
-      const changes = await parseCommits({
-        cwd: gitCwd,
-        from: range.from,
-        to: range.to,
-        ignoreAuthors: config.changelog?.ignoreAuthors || [],
-        includeTypes: config.changelog?.includeTypes as string[] | undefined,
-        excludeTypes: config.changelog?.excludeTypes as string[] | undefined,
-        collapseMerges: config.changelog?.collapseMerges,
-        collapseReverts: config.changelog?.collapseReverts,
-        preferMergeSummary: config.changelog?.preferMergeSummary,
-      });
-
-      // Enhance changes with provider links
-      const enhancedChanges = changes.map(change => enhanceChangeWithLinks(change, provider));
-
-      // Create release manifest with packages
-      // Include ALL changes for all packages (no scope filtering for monorepo)
-      const packages: PackageRelease[] = plan.packages.map(pkg => {
-        // Convert 'auto' to actual bump type for changelog
-        const bumpType = pkg.bump === 'auto' ? 'patch' : pkg.bump;
-
-        // Include all changes (monorepo-wide changelog)
-        const hasBreaking = enhancedChanges.some(c => c.breaking);
-        const hasFeat = enhancedChanges.some(c => c.type === 'feat');
-        const hasFix = enhancedChanges.some(c => c.type === 'fix');
-        const hasPerf = enhancedChanges.some(c => c.type === 'perf');
-
-        let reason: 'breaking' | 'feat' | 'fix' | 'perf' | 'ripple' | 'manual' = 'manual';
-        if (hasBreaking) reason = 'breaking';
-        else if (hasFeat) reason = 'feat';
-        else if (hasFix) reason = 'fix';
-        else if (hasPerf) reason = 'perf';
-
-        return {
-          name: pkg.name,
-          prev: pkg.currentVersion,
-          next: pkg.nextVersion,
-          bump: bumpType,
-          reason,
-          breaking: enhancedChanges.filter(c => c.breaking).flatMap(c => c.breaking!),
-          changes: enhancedChanges, // Include all changes
-        };
-      });
-
-      createReleaseManifest(range, packages);
-
-      // Load template (use corporate-ai by default)
-      const templateName = config.changelog?.template || 'corporate-ai';
-      const template = await loadTemplate(templateName, repoRoot);
-
-      // Format each package with LLM
-      const formattedPackages: string[] = [];
-      for (let i = 0; i < packages.length; i++) {
-        const pkg = packages[i];
-        if (!pkg) continue;
-
-        changelogLoader.update({ text: `Formatting changelog for ${pkg.name} (${i + 1}/${packages.length})...` });
-
-        const templateData = packageToTemplateData(pkg, locale, config.changelog?.metadata);
-
-        // Templates can be sync or async
-        const result = template.render(templateData, platform);
-        const formatted = typeof result === 'string' ? result : await result;
-
-        formattedPackages.push(formatted);
-      }
-
-      changelog = formattedPackages.join('\n\n');
+      changelog = result.markdown;
 
       // Write to workspace changelog
       const changelogPath = join(repoRoot, '.kb', 'release', 'CHANGELOG.md');
@@ -346,12 +292,7 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
       });
 
       // Fallback to simple changelog
-      const date = new Date().toISOString().split('T')[0];
-      const lines: string[] = [`## [${date}] Release\n\n`];
-      for (const pkg of plan.packages) {
-        lines.push(`- **${pkg.name}**: ${pkg.currentVersion} → ${pkg.nextVersion}`);
-      }
-      changelog = lines.join('\n');
+      changelog = generateSimpleChangelog(changelogPackages, locale);
     }
 
     ctx.tracker.checkpoint('changelog');
@@ -370,12 +311,30 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
 
     ctx.tracker.checkpoint('changelog-copy');
 
+    // Publish packages with interactive OTP support (after changelog is copied so it's included)
+    const packagesToPublish = plan.packages.map(pkg => ({
+      name: pkg.name,
+      version: pkg.nextVersion,
+      path: pkg.path,
+    }));
+
+    const publishResult = await publishPackagesWithOTP({
+      packages: packagesToPublish,
+      dryRun,
+      access: 'public',
+      ui: ctx.ui,
+      logger: ctx.logger,
+    });
+
+    ctx.tracker.checkpoint('publish');
+
     // Commit and tag release
+    // Use gitCwd (package directory) for submodule support, not repoRoot (umbrella)
     const gitLoader = useLoader(dryRun ? 'Simulating git operations (dry-run)...' : 'Committing and tagging release...');
     gitLoader.start();
 
     const gitResult = await commitAndTagRelease({
-      cwd: repoRoot,
+      cwd: gitCwd,
       plan,
       dryRun,
     });
@@ -427,18 +386,20 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
     });
 
     if (flags.json) {
-      ctx.output?.json(report);
+      ctx.ui.json(report);
     } else {
-      if (!ctx.output) {
-        throw new Error('Output not available');
-      }
-
       const sections: Array<{ header?: string; items: string[] }> = [];
 
+      // Published packages with npm links
       if (report.result.published && report.result.published.length > 0) {
         const publishedItems: string[] = [];
         for (const pkg of report.result.published) {
           publishedItems.push(`${ctx.ui.symbols.success} ${pkg}`);
+          // Extract package name from "name@version" format
+          const pkgName = pkg.split('@').slice(0, -1).join('@') || pkg.replace(/@[\d.]+$/, '');
+          if (pkgName.startsWith('@')) {
+            publishedItems.push(`  └─ https://www.npmjs.com/package/${pkgName}`);
+          }
         }
         sections.push({
           header: 'Published packages',
@@ -446,6 +407,7 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         });
       }
 
+      // Skipped packages (dry-run)
       if (report.result.skipped && report.result.skipped.length > 0) {
         const skippedItems: string[] = [];
         for (const pkg of report.result.skipped) {
@@ -457,6 +419,7 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         });
       }
 
+      // Errors
       if (report.result.errors && report.result.errors.length > 0) {
         const errorItems: string[] = [];
         for (const error of report.result.errors) {
@@ -491,34 +454,17 @@ export const runCommand = defineCommand<any, ReleaseRunFlags, ReleaseRunResult>(
         }
       }
 
-      // Artifacts section
-      const artifactsDir = join(repoRoot, '.kb', 'release');
-      const artifacts = await discoverArtifacts(artifactsDir, [
-        { name: 'Release Report', pattern: 'report.json', description: 'Detailed release report (JSON)' },
-        { name: 'Changelog', pattern: 'CHANGELOG.md', description: 'Generated changelog (Markdown)' },
-        { name: 'Summary (MD)', pattern: 'summary.md', description: 'Release summary (Markdown)' },
-        { name: 'Summary (TXT)', pattern: 'summary.txt', description: 'Release summary (Plain text)' },
-      ]);
-
-      if (artifacts.length > 0) {
-        const artifactItems: string[] = [];
-        for (const artifact of artifacts) {
-          artifactItems.push(`${ctx.ui.symbols.info} ${artifact.name}: ${artifact.path}`);
-        }
-        sections.push({
-          header: 'Artifacts',
-          items: artifactItems,
-        });
-      }
-
-      const status = report.result.ok ? 'success' : 'error';
-      const outputText = ctx.ui.sideBox({
-        title: 'Release Summary',
+      // Use ctx.ui.success for final output
+      const title = report.result.ok ? 'Release Completed' : 'Release Failed';
+      ctx.ui.success(title, {
+        summary: {
+          'Packages': String(plan.packages.length),
+          'Published': String(report.result.published?.length || 0),
+          'Errors': String(report.result.errors?.length || 0),
+        },
         sections,
-        status,
         timing: report.result.timingMs,
       });
-      ctx.ui.write(outputText);
     }
 
     // Return exit code based on result

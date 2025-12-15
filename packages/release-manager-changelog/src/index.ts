@@ -12,4 +12,5 @@ export * from './formatters/json';
 export * from './formatters/markdown';
 export * from './formatters/llm-markdown';
 export * from './templates';
+export * from './changelog-generator';
 

@@ -106,13 +106,56 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
   return result;
 }
 
-async function updatePackageVersion(pkg: PackageVersion): Promise<void> {
+/**
+ * Update package.json version to nextVersion
+ * Should be called BEFORE generating changelog so versions match
+ */
+export async function updatePackageVersion(pkg: PackageVersion): Promise<void> {
   const packageJsonPath = join(pkg.path, 'package.json');
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-  
+
   packageJson.version = pkg.nextVersion;
-  
+
   await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
+}
+
+/**
+ * Update versions for all packages in the plan
+ */
+export async function updatePackageVersions(plan: ReleasePlan): Promise<Array<{
+  package: string;
+  from: string;
+  to: string;
+  updated: boolean;
+}>> {
+  const results: Array<{
+    package: string;
+    from: string;
+    to: string;
+    updated: boolean;
+  }> = [];
+
+  for (const pkg of plan.packages) {
+    try {
+      await updatePackageVersion(pkg);
+      results.push({
+        package: pkg.name,
+        from: pkg.currentVersion || 'unknown',
+        to: pkg.nextVersion || 'unknown',
+        updated: true,
+      });
+    } catch (error) {
+      console.warn(`Failed to update version for ${pkg.name}: ${error instanceof Error ? error.message : String(error)}`);
+      results.push({
+        package: pkg.name,
+        from: pkg.currentVersion || 'unknown',
+        to: pkg.nextVersion || 'unknown',
+        updated: false,
+      });
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -225,10 +268,46 @@ export async function copyChangelogToPackages(options: {
         // No existing changelog, start fresh
       }
 
-      // Prepend new entry
-      const updatedChangelog = packageChangelog + '\n' + existingChangelog;
+      // Check if this version already exists in changelog to avoid duplicates
+      const versionPattern = new RegExp(
+        `^##\\s+${pkg.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+${pkg.nextVersion.replace(/\./g, '\\.')}`,
+        'm'
+      );
 
-      await writeFile(changelogPath, updatedChangelog, 'utf-8');
+      let updatedChangelog: string;
+      if (existingChangelog && versionPattern.test(existingChangelog)) {
+        // Version already exists - replace the section instead of prepending
+        // Find where current version section starts and next section begins
+        const lines = existingChangelog.split('\n');
+        let startIdx = -1;
+        let endIdx = lines.length;
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (line && versionPattern.test(line)) {
+            startIdx = i;
+          } else if (startIdx !== -1 && line && /^##\s+@?[\w-]+/.test(line)) {
+            // Found next section header
+            endIdx = i;
+            break;
+          }
+        }
+
+        if (startIdx !== -1) {
+          // Replace the existing section
+          const before = lines.slice(0, startIdx).join('\n');
+          const after = lines.slice(endIdx).join('\n');
+          updatedChangelog = (before ? before + '\n' : '') + packageChangelog + (after ? '\n' + after : '');
+        } else {
+          // Fallback: just use new changelog
+          updatedChangelog = packageChangelog;
+        }
+      } else {
+        // Prepend new entry
+        updatedChangelog = packageChangelog + (existingChangelog ? '\n' + existingChangelog : '');
+      }
+
+      await writeFile(changelogPath, updatedChangelog.trim() + '\n', 'utf-8');
     } catch (error) {
       console.warn(`Failed to write changelog for ${pkg.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -301,12 +380,29 @@ export async function commitAndTagRelease(options: {
 
   try {
     // 1. Git add all changes
-    await git.add([
-      '.kb/release/**',
-      'CHANGELOG.md',
-      '**/package.json',
-      '**/CHANGELOG.md',
-    ]);
+    // Build list of files to add based on what exists
+    const filesToAdd: string[] = [];
+
+    // Add package-specific files (relative to cwd which is the git repo root)
+    for (const pkg of plan.packages) {
+      // Check if pkg.path is inside cwd or equals cwd
+      if (pkg.path === cwd) {
+        // Single package at git root (e.g., kb-labs-core)
+        filesToAdd.push('package.json');
+        filesToAdd.push('CHANGELOG.md');
+      } else if (pkg.path.startsWith(cwd + '/')) {
+        // Package is subdirectory of cwd
+        const relativePath = pkg.path.replace(cwd + '/', '');
+        filesToAdd.push(`${relativePath}/package.json`);
+        filesToAdd.push(`${relativePath}/CHANGELOG.md`);
+      } else {
+        // Package path doesn't match cwd - add absolute paths
+        filesToAdd.push(`${pkg.path}/package.json`);
+        filesToAdd.push(`${pkg.path}/CHANGELOG.md`);
+      }
+    }
+
+    await git.add(filesToAdd);
 
     // 2. Create commit message
     const commitMessage = createCommitMessage(plan);
