@@ -3,18 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@kb-labs/core-bundle": [
-        "../kb-labs-core/packages/core-bundle/src/index.ts"
-      ],
-      "@kb-labs/core-bundle/*": [
-        "../kb-labs-core/packages/core-bundle/src/*"
-      ],
-      "@kb-labs/core-platform": [
-        "../kb-labs-core/packages/core-platform/src/index.ts"
-      ],
-      "@kb-labs/core-platform/*": [
-        "../kb-labs-core/packages/core-platform/src/*"
-      ],
       "@kb-labs/plugin-contracts": [
         "../kb-labs-plugin/packages/plugin-contracts/src/index.ts"
       ],
