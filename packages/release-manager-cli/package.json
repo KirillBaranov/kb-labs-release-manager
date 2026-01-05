@@ -1,6 +1,6 @@
 {
   "name": "@kb-labs/release-manager-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "KB Labs Release Manager - CLI commands for release management",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,23 +38,25 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
-    "@kb-labs/sdk": "link:../../../kb-labs-sdk/packages/sdk",
     "@kb-labs/release-manager-changelog": "link:../release-manager-changelog",
     "@kb-labs/release-manager-checks": "link:../release-manager-checks",
     "@kb-labs/release-manager-contracts": "workspace:*",
     "@kb-labs/release-manager-core": "link:../release-manager-core",
+    "@kb-labs/sdk": "link:../../../kb-labs-sdk/packages/sdk",
+    "glob": "^13.0.0",
+    "globby": "^11.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@kb-labs/devkit": "link:../../../kb-labs-devkit",
     "@types/node": "^24.3.3",
-    "globby": "^11.0.0",
     "rimraf": "^6.0.1",
     "tsup": "^8.5.0",
     "typescript": "^5.6.3",
     "vitest": "^3.2.4"
   },
   "kb": {
-    "manifest": "./dist/manifest.v2.js"
-  }
+    "manifest": "./dist/manifest.js"
+  },
+  "private": true
 }
