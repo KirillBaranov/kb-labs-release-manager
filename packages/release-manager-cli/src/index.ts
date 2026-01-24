@@ -1,5 +1,4 @@
-export { manifest } from './manifest.v2';
-export type { ManifestV2 } from '@kb-labs/sdk';
+export { manifest } from './manifest';
 
 export * from './application/index';
 export * from './domain/index';

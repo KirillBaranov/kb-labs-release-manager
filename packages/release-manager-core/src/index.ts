@@ -1,5 +1,4 @@
 export * from './types';
-export * from './config';
 export * from './planner';
 export * from './publisher';
 export * from './rollback';

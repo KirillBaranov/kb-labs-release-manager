@@ -3,7 +3,7 @@
  */
 
 import type { PackageRelease, Change, CommitType, BreakingChange, VersionBump } from '../types';
-import type { ILLM } from '@kb-labs/core-platform';
+import type { ILLM, ILogger, IAnalytics } from '@kb-labs/sdk';
 
 /**
  * Template data structure passed to render function
@@ -24,10 +24,12 @@ export interface TemplateData {
 }
 
 /**
- * Minimal platform interface for LLM access
+ * Minimal platform interface for LLM access, logging, and analytics
  */
 export interface PlatformLike {
   llm?: ILLM;
+  logger?: ILogger;
+  analytics?: IAnalytics;
 }
 
 /**

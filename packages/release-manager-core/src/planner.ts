@@ -25,10 +25,10 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
 
 
   // Discover packages
-  const packages = await discoverPackages(cwd, scope);
+  const packages = await discoverPackages(cwd, scope, config);
 
   // Detect modified packages - with timeout to prevent hanging
-  const git = simpleGit(cwd, { timeout: { block: 10000 } }); // 10 second timeout
+  const git = simpleGit(cwd, { timeout: { block: 60000 } }); // 60 second timeout for large repos
 
   const modifiedPackages = await detectModifiedPackages(git, packages);
 
@@ -79,11 +79,11 @@ function mapBumpStrategyToVersionStrategy(
   return 'independent';
 }
 
-async function discoverPackages(cwd: string, scope?: string): Promise<PackageVersion[]> {
+async function discoverPackages(cwd: string, scope?: string, config?: ReleaseConfig): Promise<PackageVersion[]> {
   const packages: PackageVersion[] = [];
 
-  // Read config for customization (optional)
-  const config = await readReleaseConfig(cwd);
+  // Use provided config or empty object
+  const releaseConfig = config || {};
 
   // Determine scope type:
   // 1. Exact package name: @kb-labs/core, my-package
@@ -95,7 +95,7 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
   // Find package.json files - support nested monorepos
   // For wildcard patterns with package names (like @kb-labs/core-*), we need to find all packages first
   // then filter by name regex, because glob patterns work on file paths, not package names
-  const pattern = config.release?.packagesPattern || '**/package.json';
+  const pattern = '**/package.json'; // Default pattern - config customization not yet implemented
 
   const packageJsonPaths = await globby(pattern, {
     cwd,
@@ -107,7 +107,6 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
       '**/build/**',
       '**/.git/**',
       '**/.*/**', // hidden folders
-      ...(config.release?.ignorePatterns || []),
     ],
   });
 
@@ -121,13 +120,13 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
     const packagePath = join(packageJsonPath, '..');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
 
-    // Skip root package.json unless configured
-    if (packageJsonPath === join(cwd, 'package.json') && !config.release?.includeRoot) {
+    // Skip root package.json (always)
+    if (packageJsonPath === join(cwd, 'package.json')) {
       continue;
     }
 
-    // Skip private packages unless configured
-    if (packageJson.private && !config.release?.includePrivate) {
+    // Skip private packages (always)
+    if (packageJson.private) {
       continue;
     }
 
@@ -155,7 +154,7 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
       currentVersion: packageJson.version,
       nextVersion: packageJson.version,
       bump: 'auto',
-      isPublished: !packageJson.private,
+      isPublished: false, // Will be set to true after actual publish
     });
   }
 
@@ -163,16 +162,22 @@ async function discoverPackages(cwd: string, scope?: string): Promise<PackageVer
 }
 
 /**
- * Read release configuration from kb.config.json (optional)
+ * Check if file should be ignored (node_modules, dist, etc.)
  */
-async function readReleaseConfig(cwd: string): Promise<any> {
-  try {
-    const configPath = join(cwd, 'kb.config.json');
-    const configContent = await readFile(configPath, 'utf-8');
-    return JSON.parse(configContent);
-  } catch {
-    return {}; // fallback to empty config if file doesn't exist
-  }
+function shouldIgnoreFile(file: string): boolean {
+  const ignoredPaths = [
+    'node_modules/',
+    '.git/',
+    'dist/',
+    'build/',
+    '.next/',
+    '.nuxt/',
+    'coverage/',
+    '.cache/',
+    'tmp/',
+  ];
+
+  return ignoredPaths.some(path => file.includes(path));
 }
 
 async function detectModifiedPackages(
@@ -182,13 +187,13 @@ async function detectModifiedPackages(
 
   // Get list of modified files
   const status = await git.status();
-
   const diffSummary = await git.diffSummary(['HEAD']);
 
+  // Filter out node_modules and other build artifacts
   const modifiedPaths = [
     ...status.files.map(f => f.path),
     ...diffSummary.files.map(f => f.file),
-  ];
+  ].filter(path => !shouldIgnoreFile(path));
 
 
   // Find packages that have changes

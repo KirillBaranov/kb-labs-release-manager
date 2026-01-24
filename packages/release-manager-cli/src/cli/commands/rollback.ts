@@ -2,68 +2,54 @@
  * Release rollback command
  */
 
-import { defineCommand, type CommandResult } from '@kb-labs/sdk';
+import { defineCommand, type CommandResult, type PluginContextV3 } from '@kb-labs/sdk';
 import { restoreSnapshot } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
-type ReleaseRollbackFlags = {
-  json: { type: 'boolean'; description?: string; default?: boolean };
-};
+// Input type combining flags with backward compatibility
+type RollbackInput = {
+  json?: boolean;
+  argv?: string[];
+} & { flags?: any };
 
 type ReleaseRollbackResult = CommandResult & {
   message?: string;
 };
 
-export const rollbackCommand = defineCommand({
-  name: 'release:rollback',
-  flags: {
-    json: {
-      type: 'boolean',
-      description: 'Output in JSON format',
-      default: false,
-    },
-  },
-  analytics: {
-    startEvent: ANALYTICS_EVENTS.ROLLBACK_STARTED,
-    finishEvent: ANALYTICS_EVENTS.ROLLBACK_FINISHED,
-    actor: ANALYTICS_ACTOR.id,
-  },
-  async handler(ctx: any, argv: string[], flags: any) {
-    const cwd = ctx.cwd || process.cwd();
-    const repoRoot = await findRepoRoot(cwd);
-    
-    ctx.tracker.checkpoint('start');
+export default defineCommand({
+  id: 'release:rollback',
+  description: 'Rollback last release',
 
-    await restoreSnapshot(repoRoot);
-    
-    ctx.tracker.checkpoint('complete');
+  handler: {
+    async execute(ctx: PluginContextV3, input: RollbackInput): Promise<ReleaseRollbackResult> {
+      // Access flags via input.flags (with fallback for direct input)
+      const flags = (input as any).flags ?? input;
+      const cwd = ctx.cwd || process.cwd();
+      const repoRoot = await findRepoRoot(cwd);
 
-    ctx.logger?.info('Release rollback completed');
+      await restoreSnapshot(repoRoot);
 
-    if (flags.json) {
-      ctx.output?.json({ ok: true, message: 'Rollback completed' });
-    } else {
-      if (!ctx.output) {
-        throw new Error('Output not available');
+      ctx.platform?.logger?.info?.('Release rollback completed');
+
+      if (flags.json) {
+        ctx.ui?.json?.({ exitCode: 4, message: 'Rollback completed' });
+      } else {
+        ctx.ui.sideBox({
+          title: 'Rollback',
+          sections: [
+            {
+              items: [
+                `${ctx.ui.symbols.success} ${ctx.ui.colors.success('Release state restored from backup snapshot')}`,
+              ],
+            },
+          ],
+          status: 'success',
+        });
       }
 
-      const outputText = ctx.ui.sideBox({
-        title: 'Rollback',
-        sections: [
-          {
-            items: [
-              `${ctx.ui.symbols.success} ${ctx.ui.colors.success('Release state restored from backup snapshot')}`,
-            ],
-          },
-        ],
-        status: 'success',
-        timing: ctx.tracker.total(),
-      });
-      ctx.ui.write(outputText);
-    }
-
-    // Return exit code 4 for rollback executed
-    return 4;
+      // Return exit code 4 for rollback executed
+      return { exitCode: 4, message: 'Rollback completed' };
+    },
   },
 });

@@ -134,6 +134,7 @@ async function enhanceGroup(
 ): Promise<string> {
   // Fallback if no LLM
   if (!platform?.llm) {
+    platform?.logger?.info?.(`[corporate-ai] No LLM platform for ${groupType}, using basic format`);
     return formatBasicGroup(commits);
   }
 
@@ -147,14 +148,30 @@ async function enhanceGroup(
 
     const prompt = buildEnhancementPrompt(commitsContext, groupType, locale);
 
+    const startTime = Date.now();
     const response = await platform.llm.complete(prompt, {
       temperature: 0.7,
       maxTokens: 500,
+    });
+    const durationMs = Date.now() - startTime;
+
+    // Track LLM usage via analytics
+    await platform?.analytics?.track?.('changelog.llm.enhanced', {
+      groupType,
+      locale,
+      commitsCount: commits.length,
+      contentLength: response.content.length,
+      promptTokens: response.usage.promptTokens,
+      completionTokens: response.usage.completionTokens,
+      totalTokens: response.usage.promptTokens + response.usage.completionTokens,
+      durationMs,
+      model: response.model,
     });
 
     // Validate LLM output
     const enhanced = response.content.trim();
     if (enhanced.length === 0) {
+      platform?.logger?.warn?.(`[corporate-ai] LLM returned empty content for ${groupType}, using basic format`);
       return formatBasicGroup(commits);
     }
 
@@ -162,7 +179,10 @@ async function enhanceGroup(
 
   } catch (error) {
     // Graceful degradation on error
-    console.warn(`LLM enhancement failed for ${groupType}, using basic format:`, error);
+    platform?.logger?.error?.(
+      `[corporate-ai] LLM enhancement failed for ${groupType}, using basic format`,
+      error instanceof Error ? error : undefined
+    );
     return formatBasicGroup(commits);
   }
 }

@@ -3,21 +3,22 @@
  * Validate release readiness
  */
 
-import { defineCommand, type CommandResult, keyValue } from '@kb-labs/sdk';
-import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-manager-core';
+import { defineCommand, type CommandResult, type PluginContextV3, useConfig } from '@kb-labs/sdk';
+import { planRelease, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { resolveGitRange, parseCommits } from '@kb-labs/release-manager-changelog';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
-type ReleaseVerifyFlags = {
-  scope: { type: 'string'; description?: string };
-  profile: { type: 'string'; description?: string };
-  bump: { type: 'string'; description?: string; choices?: readonly string[] };
-  'fail-if-empty': { type: 'boolean'; description?: string; default?: boolean };
-  'fail-on-breaking': { type: 'boolean'; description?: string; default?: boolean };
-  'allow-types': { type: 'string'; description?: string };
-  json: { type: 'boolean'; description?: string; default?: boolean };
-};
+type VerifyInput = {
+  scope?: string;
+  profile?: string;
+  bump?: 'patch' | 'minor' | 'major' | 'auto';
+  'fail-if-empty'?: boolean;
+  'fail-on-breaking'?: boolean;
+  'allow-types'?: string;
+  json?: boolean;
+  argv?: string[];
+} & { flags?: any };
 
 type ReleaseVerifyResult = CommandResult & {
   plan?: {
@@ -25,176 +26,135 @@ type ReleaseVerifyResult = CommandResult & {
   };
   commits?: Array<{ type: string; breaking?: boolean }>;
   breakingDetected?: boolean;
+  valid?: boolean;
+  issues?: string[];
 };
 
-export const verifyCommand = defineCommand({
-  name: 'release:verify',
-  flags: {
-    scope: {
-      type: 'string',
-      description: 'Package scope (glob pattern)',
-    },
-    profile: {
-      type: 'string',
-      description: 'Release profile to use',
-    },
-    bump: {
-      type: 'string',
-      description: 'Version bump strategy',
-      choices: ['patch', 'minor', 'major', 'auto'] as const,
-    },
-    'fail-if-empty': {
-      type: 'boolean',
-      description: 'Fail if no packages to release',
-      default: false,
-    },
-    'fail-on-breaking': {
-      type: 'boolean',
-      description: 'Fail if breaking changes detected',
-      default: false,
-    },
-    'allow-types': {
-      type: 'string',
-      description: 'Comma-separated list of required commit types',
-    },
-    json: {
-      type: 'boolean',
-      description: 'Output in JSON format',
-      default: false,
-    },
-  },
-  analytics: {
-    startEvent: ANALYTICS_EVENTS.VERIFY_STARTED,
-    finishEvent: ANALYTICS_EVENTS.VERIFY_FINISHED,
-    actor: ANALYTICS_ACTOR.id,
-    includeFlags: true,
-  },
-  async handler(ctx: any, argv: string[], flags: any) {
-    const cwd = ctx.cwd || process.cwd();
-    const repoRoot = await findRepoRoot(cwd);
-    
-    ctx.tracker.checkpoint('config');
+export default defineCommand({
+  id: 'release:verify',
+  description: 'Validate release readiness',
 
-    // Load configuration and create plan
-    const { config } = await loadReleaseConfig({
-      cwd: repoRoot,
-      profileId: flags.profile,
-      cli: {
-        bump: flags.bump,
-      },
-    });
+  handler: {
+    async execute(ctx: PluginContextV3, input: VerifyInput): Promise<ReleaseVerifyResult> {
+      const flags = (input as any).flags ?? input;
+      const cwd = ctx.cwd || process.cwd();
+      const repoRoot = await findRepoRoot(cwd);
 
-    ctx.tracker.checkpoint('plan');
+      // Load configuration and create plan
+      const fileConfig = await useConfig<ReleaseConfig>();
 
-    const plan = await planRelease({
-      cwd: repoRoot,
-      config,
-      scope: flags.scope,
-      bumpOverride: flags.bump as VersionBump | undefined,
-    });
+      // Merge CLI overrides
+      const config: ReleaseConfig = {
+        ...fileConfig,
+        ...(flags.bump && { bump: flags.bump }),
+      };
 
-    ctx.tracker.checkpoint('verify');
-
-    // Validation logic
-    const hasPackages = plan.packages.length > 0;
-    const hasBreaking = plan.packages.some(pkg => {
-      if (!pkg.currentVersion || !pkg.nextVersion) {
-        return false;
-      }
-      const currentMajor = parseInt(pkg.currentVersion.split('.')[0] || '0');
-      const nextMajor = parseInt(pkg.nextVersion.split('.')[0] || '0');
-      return nextMajor > currentMajor;
-    });
-
-    let isValid = true;
-    const issues: string[] = [];
-
-    if (flags['fail-if-empty'] && !hasPackages) {
-      isValid = false;
-      issues.push('No packages to release (--fail-if-empty)');
-    }
-
-    if (flags['fail-on-breaking'] && hasBreaking) {
-      isValid = false;
-      issues.push('Breaking changes detected (--fail-on-breaking)');
-    }
-
-    if (flags['allow-types']) {
-      const allowedTypes = flags['allow-types'].split(',');
-      // Parse commits to check for required types
-      const range = await resolveGitRange({
+      const plan = await planRelease({
         cwd: repoRoot,
-        sinceTag: undefined,
-        autoUnshallow: config.git?.autoUnshallow,
+        config,
+        scope: flags.scope,
+        bumpOverride: flags.bump as VersionBump | undefined,
       });
-      const changes = await parseCommits({
-        cwd: repoRoot,
-        from: range.from,
-        to: range.to,
-        ignoreAuthors: config.changelog?.ignoreAuthors || [],
+
+      // Validation logic
+      const hasPackages = plan.packages.length > 0;
+      const hasBreaking = plan.packages.some(pkg => {
+        if (!pkg.currentVersion || !pkg.nextVersion) {
+          return false;
+        }
+        const currentMajor = parseInt(pkg.currentVersion.split('.')[0] || '0');
+        const nextMajor = parseInt(pkg.nextVersion.split('.')[0] || '0');
+        return nextMajor > currentMajor;
       });
-      const hasAllowedTypes = changes.some(change => allowedTypes.includes(change.type));
-      if (!hasAllowedTypes) {
+
+      let isValid = true;
+      const issues: string[] = [];
+
+      if (flags['fail-if-empty'] && !hasPackages) {
         isValid = false;
-        issues.push(`Required types not found: ${allowedTypes.join(', ')}`);
+        issues.push('No packages to release (--fail-if-empty)');
       }
-    }
 
-    ctx.tracker.checkpoint('complete');
+      if (flags['fail-on-breaking'] && hasBreaking) {
+        isValid = false;
+        issues.push('Breaking changes detected (--fail-on-breaking)');
+      }
 
-    ctx.logger?.info('Release verify completed', { 
-      valid: isValid,
-      hasPackages,
-      hasBreaking,
-      issuesCount: issues.length,
-    });
+      if (flags['allow-types']) {
+        const allowedTypes = flags['allow-types'].split(',');
+        // Parse commits to check for required types
+        const range = await resolveGitRange({
+          cwd: repoRoot,
+          sinceTag: undefined,
+          autoUnshallow: config.git?.autoUnshallow,
+        });
+        const changes = await parseCommits({
+          cwd: repoRoot,
+          from: range.from,
+          to: range.to,
+          ignoreAuthors: config.changelog?.ignoreAuthors || [],
+        });
+        const hasAllowedTypes = changes.some(change => allowedTypes.includes(change.type));
+        if (!hasAllowedTypes) {
+          isValid = false;
+          issues.push(`Required types not found: ${allowedTypes.join(', ')}`);
+        }
+      }
 
-    if (flags.json) {
-      ctx.output?.json({
+      ctx.platform?.logger?.info?.('Release verify completed', {
         valid: isValid,
         hasPackages,
         hasBreaking,
-        issues,
-        plan,
+        issuesCount: issues.length,
       });
-    } else {
-      if (!ctx.output) {
-        throw new Error('Output not available');
-      }
 
-      const sections: Array<{ header?: string; items: string[] }> = [
-        {
-          header: 'Status',
-          items: [
-            `Has Packages: ${hasPackages ? 'Yes' : 'No'}`,
-            `Has Breaking Changes: ${hasBreaking ? 'Yes' : 'No'}`,
-            `Result: ${isValid ? 'Valid for release' : 'Blocked'}`,
-          ],
-        },
-      ];
+      if (flags.json) {
+        ctx.ui?.json?.({
+          valid: isValid,
+          hasPackages,
+          hasBreaking,
+          issues,
+          plan,
+        });
+      } else {
+        const sections: Array<{ header?: string; items: string[] }> = [
+          {
+            header: 'Status',
+            items: [
+              `Has Packages: ${hasPackages ? 'Yes' : 'No'}`,
+              `Has Breaking Changes: ${hasBreaking ? 'Yes' : 'No'}`,
+              `Result: ${isValid ? 'Valid for release' : 'Blocked'}`,
+            ],
+          },
+        ];
 
-      if (issues.length > 0) {
-        const issueItems: string[] = [];
-        for (const issue of issues) {
-          issueItems.push(`${ctx.ui.symbols.error} ${issue}`);
+        if (issues.length > 0) {
+          const issueItems: string[] = [];
+          for (const issue of issues) {
+            issueItems.push(`${ctx.ui.symbols.error} ${issue}`);
+          }
+          sections.push({
+            header: 'Issues',
+            items: issueItems,
+          });
         }
-        sections.push({
-          header: 'Issues',
-          items: issueItems,
+
+        const status = isValid ? 'success' : 'error';
+        ctx.ui.sideBox({
+          title: 'Release Verification',
+          sections,
+          status,
         });
       }
 
-      const status = isValid ? 'success' : 'error';
-      const outputText = ctx.ui.sideBox({
-        title: 'Release Verification',
-        sections,
-        status,
-        timing: ctx.tracker.total(),
-      });
-      ctx.ui.write(outputText);
-    }
-
-    // Return exit code 2 for validation failure (quality gate)
-    return isValid ? 0 : 2;
+      // Return exit code 2 for validation failure (quality gate)
+      return {
+        exitCode: isValid ? 0 : 2,
+        valid: isValid,
+        plan,
+        issues,
+        breakingDetected: hasBreaking,
+      };
+    },
   },
 });

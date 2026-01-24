@@ -4,7 +4,7 @@
  */
 
 import type { Change, PackageRelease, ReleaseManifest, GitRange } from './types';
-import type { ILLM } from '@kb-labs/core-platform';
+import type { ILLM, ILogger, IAnalytics } from '@kb-labs/sdk';
 import { resolveGitRange } from './git-range';
 import { parseCommits } from './parser';
 import { detectProvider, enhanceChangeWithLinks } from './providers';
@@ -56,8 +56,8 @@ export interface GenerateChangelogOptions {
     requireSignedTags?: boolean;
     baseUrl?: string;
   };
-  /** LLM platform for AI-powered formatting */
-  platform?: { llm: ILLM };
+  /** Platform services for AI-powered formatting, logging, and analytics */
+  platform?: { llm?: ILLM; logger?: ILogger; analytics?: IAnalytics };
   /** Progress callback */
   onProgress?: (message: string) => void;
 }

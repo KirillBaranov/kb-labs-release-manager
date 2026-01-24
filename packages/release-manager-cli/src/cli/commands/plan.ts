@@ -2,20 +2,28 @@
  * Release plan command
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { defineCommand, type CommandResult, useLoader, discoverArtifacts } from '@kb-labs/sdk';
-import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-manager-core';
+import {
+  defineCommand,
+  type CommandResult,
+  type PluginContextV3,
+  useLoader,
+  displayArtifacts,
+  type ArtifactInfo,
+  useConfig,
+} from '@kb-labs/sdk';
+import { planRelease, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
-type ReleasePlanFlags = {
-  scope: { type: 'string'; description?: string };
-  profile: { type: 'string'; description?: string };
-  bump: { type: 'string'; description?: string; choices?: readonly string[]; default?: string };
-  strict: { type: 'boolean'; description?: string; default?: boolean };
-  json: { type: 'boolean'; description?: string; default?: boolean };
-};
+// Input type combining flags with backward compatibility
+type PlanInput = {
+  scope?: string;
+  profile?: string;
+  bump?: 'patch' | 'minor' | 'major' | 'auto';
+  strict?: boolean;
+  json?: boolean;
+  argv?: string[];
+} & { flags?: any };
 
 type ReleasePlanResult = CommandResult & {
   plan?: {
@@ -29,160 +37,131 @@ type ReleasePlanResult = CommandResult & {
   };
 };
 
-export const planCommand = defineCommand({
-  name: 'release:plan',
-  flags: {
-    scope: {
-      type: 'string',
-      description: 'Package scope (glob pattern)',
-    },
-    profile: {
-      type: 'string',
-      description: 'Release profile to use',
-    },
-    bump: {
-      type: 'string',
-      description: 'Version bump strategy',
-      choices: ['patch', 'minor', 'major', 'auto'] as const,
-      default: 'auto',
-    },
-    strict: {
-      type: 'boolean',
-      description: 'Fail on any check failure',
-      default: false,
-    },
-    json: {
-      type: 'boolean',
-      description: 'Print plan as JSON',
-      default: false,
-    },
-  },
-  analytics: {
-    startEvent: ANALYTICS_EVENTS.PLAN_STARTED,
-    finishEvent: ANALYTICS_EVENTS.PLAN_FINISHED,
-    actor: ANALYTICS_ACTOR.id,
-    includeFlags: true,
-  },
-  async handler(ctx: any, argv: string[], flags: any) {
-    const cwd = ctx.cwd || process.cwd();
-    const repoRoot = await findRepoRoot(cwd);
+export default defineCommand({
+  id: 'release:plan',
+  description: 'Analyze changes and prepare release plan',
 
-    ctx.tracker.checkpoint('config');
+  handler: {
+    async execute(ctx: PluginContextV3, input: PlanInput): Promise<ReleasePlanResult> {
+      const flags = (input as any).flags ?? input;
+      const cwd = ctx.cwd || process.cwd();
+      const repoRoot = await findRepoRoot(cwd);
 
-    // Load configuration with loader
-    const configLoader = useLoader('Loading release configuration...');
-    configLoader.start();
+      // Load configuration with loader
+      const configLoader = useLoader('Loading release configuration...');
+      configLoader.start();
 
-    const { config } = await loadReleaseConfig({
-      cwd: repoRoot,
-      profileId: flags.profile,
-      cli: {
-        bump: flags.bump,
-        strict: flags.strict,
-      },
-    });
+      const fileConfig = await useConfig<ReleaseConfig>();
 
-    configLoader.succeed('Configuration loaded');
+      // Merge CLI overrides
+      const config: ReleaseConfig = {
+        ...fileConfig,
+        ...(flags.bump && { bump: flags.bump }),
+        ...(flags.strict !== undefined && { strict: flags.strict }),
+      };
 
-    ctx.tracker.checkpoint('plan');
+      configLoader.succeed('Configuration loaded');
 
-    // Create release plan with loader
-    const planLoader = useLoader('Discovering packages and planning release...');
-    planLoader.start();
+      // Create release plan with loader
+      const planLoader = useLoader('Discovering packages and planning release...');
+      planLoader.start();
 
-    const plan = await planRelease({
-      cwd: repoRoot,
-      config,
-      scope: flags.scope,
-      bumpOverride: flags.bump as VersionBump | undefined,
-    });
-
-    if (plan.packages.length === 0) {
-      planLoader.fail(`No packages found matching scope: ${flags.scope || 'all'}`);
-    } else {
-      planLoader.succeed(`Found ${plan.packages.length} package(s) to release`);
-    }
-
-    ctx.tracker.checkpoint('complete');
-
-    // Save plan to .kb/release/plan.json
-    if (!flags.json) {
-      const planDir = join(repoRoot, '.kb', 'release');
-      await mkdir(planDir, { recursive: true });
-      const planPath = join(planDir, 'plan.json');
-      await writeFile(planPath, JSON.stringify(plan, null, 2), 'utf-8');
-    }
-
-    ctx.logger?.info('Release plan completed', {
-      packagesCount: plan.packages.length,
-      strategy: plan.strategy,
-      registry: plan.registry,
-    });
-
-    if (flags.json) {
-      ctx.output?.json(plan);
-    } else {
-      if (!ctx.ui) {
-        throw new Error('UI not available');
-      }
-
-      const sections: Array<{ header?: string; items: string[] }> = [];
-
-      // Summary as first section
-      sections.push({
-        header: 'Summary',
-        items: [
-          `Strategy: ${plan.strategy}`,
-          `Registry: ${plan.registry}`,
-          `Packages: ${plan.packages.length}`,
-        ],
+      const plan = await planRelease({
+        cwd: repoRoot,
+        config,
+        scope: flags.scope,
+        bumpOverride: flags.bump as VersionBump | undefined,
       });
 
-      // Packages section
-      if (plan.packages.length > 0) {
-        const packageItems: string[] = [];
-        for (const pkg of plan.packages) {
-          const versionInfo = pkg.currentVersion && pkg.nextVersion
-            ? `${pkg.currentVersion} → ${pkg.nextVersion}`
-            : pkg.nextVersion || 'new';
-          packageItems.push(`${ctx.ui.symbols.success} ${pkg.name}: ${versionInfo}`);
-        }
-        sections.push({
-          header: 'Packages to release',
-          items: packageItems,
-        });
+      if (plan.packages.length === 0) {
+        planLoader.fail(`No packages found matching scope: ${flags.scope || 'all'}`);
       } else {
-        sections.push({
-          items: ['No packages to release'],
+        planLoader.succeed(`Found ${plan.packages.length} package(s) to release`);
+      }
+
+      // Save plan to .kb/release/plan.json
+      const planDir = ctx.runtime.fs.join(repoRoot, '.kb', 'release');
+      const planPath = ctx.runtime.fs.join(planDir, 'plan.json');
+      const artifacts: ArtifactInfo[] = [];
+
+      if (!flags.json) {
+        await ctx.runtime.fs.mkdir(planDir, { recursive: true });
+        await ctx.runtime.fs.writeFile(planPath, JSON.stringify(plan, null, 2), { encoding: 'utf-8' });
+
+        const stats = await ctx.runtime.fs.stat(planPath);
+        artifacts.push({
+          name: 'Release Plan',
+          path: planPath,
+          size: stats.size,
+          modified: new Date(stats.mtime),
+          description: 'Detailed release plan (JSON)',
         });
       }
 
-      // Artifacts section
-      const artifactsDir = join(repoRoot, '.kb', 'release');
-      const artifacts = await discoverArtifacts(artifactsDir, [
-        { name: 'Release Plan', pattern: 'plan.json', description: 'Detailed release plan (JSON)' },
-      ]);
-
-      if (artifacts.length > 0) {
-        const artifactItems: string[] = [];
-        for (const artifact of artifacts) {
-          artifactItems.push(`${ctx.ui.symbols.info} ${artifact.name}: ${artifact.path}`);
-        }
-        sections.push({
-          header: 'Artifacts',
-          items: artifactItems,
-        });
-      }
-
-      const outputText = ctx.ui.sideBox({
-        title: 'Release Plan',
-        sections,
-        status: 'success',
-        timing: ctx.tracker.total(),
+      ctx.platform?.logger?.info?.('Release plan completed', {
+        packagesCount: plan.packages.length,
+        strategy: plan.strategy,
+        registry: plan.registry,
       });
-      ctx.ui.write(outputText);
-    }
 
-    return { ok: true, plan };
+      if (flags.json) {
+        ctx.ui?.json?.(plan);
+      } else {
+        const sections: Array<{ header?: string; items: string[] }> = [];
+
+        // Summary
+        sections.push({
+          header: 'Summary',
+          items: [
+            `Strategy: ${plan.strategy}`,
+            `Registry: ${plan.registry}`,
+            `Packages: ${plan.packages.length}`,
+          ],
+        });
+
+        // Packages section
+        if (plan.packages.length > 0) {
+          const packageItems: string[] = [];
+          for (const pkg of plan.packages) {
+            const versionInfo =
+              pkg.currentVersion && pkg.nextVersion
+                ? `${pkg.currentVersion} → ${pkg.nextVersion}`
+                : pkg.nextVersion || 'new';
+            packageItems.push(`${ctx.ui.symbols.success} ${pkg.name}: ${versionInfo}`);
+          }
+          sections.push({
+            header: 'Packages to release',
+            items: packageItems,
+          });
+        } else {
+          sections.push({
+            items: ['No packages to release'],
+          });
+        }
+
+        // Artifacts section
+        if (artifacts.length > 0) {
+          const artifactsLines = displayArtifacts(artifacts, {
+            showSize: true,
+            showTime: true,
+            showDescription: true,
+            maxItems: 10,
+            title: '',
+          });
+          sections.push({
+            header: 'Artifacts',
+            items: artifactsLines,
+          });
+        }
+
+        ctx.ui.sideBox({
+          title: 'Release Plan',
+          sections,
+          status: 'success',
+        });
+      }
+
+      return { exitCode: 0, plan };
+    },
   },
 });

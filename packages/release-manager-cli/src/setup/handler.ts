@@ -1,40 +1,29 @@
-import { access, mkdir, writeFile } from 'node:fs/promises';
-import { constants as fsConstants } from 'node:fs';
-import { dirname, join } from 'node:path';
-
-type SetupContext = {
-  cwd?: string;
-  runtime?: {
-    log?: (
-      level: 'debug' | 'info' | 'warn' | 'error',
-      message: string,
-      meta?: Record<string, unknown>
-    ) => void;
-  };
-};
+import type { PluginContextV3 } from '@kb-labs/sdk';
 
 const RELEASE_DIRS = ['plans', 'reports', 'backups'];
 
-export async function run(ctx: SetupContext = {}) {
-  const cwd = ctx.cwd ?? process.cwd();
-  const releaseDir = join(cwd, '.kb', 'release');
+export async function run(ctx: PluginContextV3) {
+  const cwd = ctx.cwd;
+  const releaseDir = ctx.runtime.fs.join(cwd, '.kb', 'release');
   const created: string[] = [];
 
-  await mkdir(releaseDir, { recursive: true });
+  await ctx.runtime.fs.mkdir(releaseDir, { recursive: true });
 
   for (const dir of RELEASE_DIRS) {
-    const target = join(releaseDir, dir);
-    await mkdir(target, { recursive: true });
+    const target = ctx.runtime.fs.join(releaseDir, dir);
+    await ctx.runtime.fs.mkdir(target, { recursive: true });
     created.push(target);
   }
 
   await ensureFile(
-    join(releaseDir, '.gitignore'),
+    ctx,
+    ctx.runtime.fs.join(releaseDir, '.gitignore'),
     ['# Release artifacts', 'plans/', 'reports/', 'backups/', '*.json', '*.md', ''].join('\n')
   );
 
   await ensureFile(
-    join(releaseDir, 'README.md'),
+    ctx,
+    ctx.runtime.fs.join(releaseDir, 'README.md'),
     [
       '# KB Labs Release workspace',
       '',
@@ -47,7 +36,8 @@ export async function run(ctx: SetupContext = {}) {
 
   // Generate example release.config.ts with checks
   await ensureFile(
-    join(releaseDir, 'release.config.example.ts'),
+    ctx,
+    ctx.runtime.fs.join(releaseDir, 'release.config.example.ts'),
     [
       '/**',
       ' * Example Release Manager Configuration',
@@ -91,7 +81,7 @@ export async function run(ctx: SetupContext = {}) {
     ].join('\n')
   );
 
-  ctx.runtime?.log?.('info', 'Release setup completed', { cwd, created });
+  ctx.platform.logger.info('Release setup completed', { cwd, created });
 
   return {
     ok: true,
@@ -110,12 +100,12 @@ export async function run(ctx: SetupContext = {}) {
   };
 }
 
-async function ensureFile(path: string, contents: string) {
-  try {
-    await access(path, fsConstants.F_OK);
-  } catch {
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, contents, 'utf-8');
+async function ensureFile(ctx: PluginContextV3, path: string, contents: string) {
+  const exists = await ctx.runtime.fs.exists(path);
+  if (!exists) {
+    const dir = ctx.runtime.fs.dirname(path);
+    await ctx.runtime.fs.mkdir(dir, { recursive: true });
+    await ctx.runtime.fs.writeFile(path, contents, { encoding: 'utf-8' });
   }
 }
 

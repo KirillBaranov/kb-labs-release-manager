@@ -4,7 +4,7 @@
  */
 
 import type { PackageRelease, Change } from '../types';
-import type { ILLM } from '@kb-labs/core-platform';
+import type { ILLM } from '@kb-labs/sdk';
 import { formatPackageAsMarkdown } from './markdown';
 
 /**

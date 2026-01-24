@@ -1,20 +1,20 @@
 /**
  * Release preview command
- * Dry-run release planning
  */
 
-import { defineCommand, type CommandResult, keyValue } from '@kb-labs/sdk';
-import { loadReleaseConfig, planRelease, type VersionBump } from '@kb-labs/release-manager-core';
+import { defineCommand, type CommandResult, type PluginContextV3, useConfig } from '@kb-labs/sdk';
+import { planRelease, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
-type ReleasePreviewFlags = {
-  scope: { type: 'string'; description?: string };
-  profile: { type: 'string'; description?: string };
-  bump: { type: 'string'; description?: string; choices?: readonly string[] };
-  strict: { type: 'boolean'; description?: string; default?: boolean };
-  json: { type: 'boolean'; description?: string; default?: boolean };
-};
+// Input type combining flags with backward compatibility
+type PreviewInput = {
+  scope?: string;
+  profile?: string;
+  bump?: 'patch' | 'minor' | 'major' | 'auto';
+  strict?: boolean;
+  json?: boolean;
+  argv?: string[];
+} & { flags?: any };
 
 type ReleasePreviewResult = CommandResult & {
   plan?: {
@@ -23,116 +23,84 @@ type ReleasePreviewResult = CommandResult & {
   };
 };
 
-export const previewCommand = defineCommand({
-  name: 'release:preview',
-  flags: {
-    scope: {
-      type: 'string',
-      description: 'Package scope (glob pattern)',
-    },
-    profile: {
-      type: 'string',
-      description: 'Release profile to use',
-    },
-    bump: {
-      type: 'string',
-      description: 'Version bump strategy',
-      choices: ['patch', 'minor', 'major', 'auto'] as const,
-    },
-    strict: {
-      type: 'boolean',
-      description: 'Fail on any check failure',
-      default: false,
-    },
-    json: {
-      type: 'boolean',
-      description: 'Output in JSON format',
-      default: false,
-    },
-  },
-  analytics: {
-    startEvent: ANALYTICS_EVENTS.PREVIEW_STARTED,
-    finishEvent: ANALYTICS_EVENTS.PREVIEW_FINISHED,
-    actor: ANALYTICS_ACTOR.id,
-    includeFlags: true,
-  },
-  async handler(ctx: any, argv: string[], flags: any) {
-    const cwd = ctx.cwd || process.cwd();
-    const repoRoot = await findRepoRoot(cwd);
-    
-    ctx.tracker.checkpoint('config');
+export default defineCommand({
+  id: 'release:preview',
+  description: 'Preview release plan without making changes',
 
-    // Load configuration and create plan
-    const { config } = await loadReleaseConfig({
-      cwd: repoRoot,
-      profileId: flags.profile,
-      cli: {
-        bump: flags.bump,
-        strict: flags.strict,
-      },
-    });
+  handler: {
+    async execute(ctx: PluginContextV3, input: PreviewInput): Promise<ReleasePreviewResult> {
+      const flags = (input as any).flags ?? input;
+      const cwd = ctx.cwd || process.cwd();
+      const repoRoot = await findRepoRoot(cwd);
 
-    ctx.tracker.checkpoint('plan');
+      // Load configuration and create plan
+      const fileConfig = await useConfig<ReleaseConfig>();
 
-    const plan = await planRelease({
-      cwd: repoRoot,
-      config,
-      scope: flags.scope,
-      bumpOverride: flags.bump as VersionBump | undefined,
-    });
+      // Merge CLI overrides
+      const config: ReleaseConfig = {
+        ...fileConfig,
+        ...(flags.bump && { bump: flags.bump }),
+        ...(flags.strict !== undefined && { strict: flags.strict }),
+      };
 
-    ctx.tracker.checkpoint('complete');
+      const plan = await planRelease({
+        cwd: repoRoot,
+        config,
+        scope: flags.scope,
+        bumpOverride: flags.bump as VersionBump | undefined,
+      });
 
-    ctx.logger?.info('Release preview completed', { 
-      packagesCount: plan.packages.length,
-      strategy: plan.strategy,
-    });
+      // Platform services with optional chaining
+      ctx.platform?.logger?.info?.('Release preview completed', {
+        packagesCount: plan.packages.length,
+        strategy: plan.strategy,
+      });
 
-    if (flags.json) {
-      ctx.output?.json(plan);
-    } else {
-      if (!ctx.output) {
-        throw new Error('Output not available');
-      }
-
-      const sections: Array<{ header?: string; items: string[] }> = [];
-
-      if (plan.packages.length === 0) {
-        sections.push({
-          items: ['No packages to release.'],
-        });
+      if (flags.json) {
+        ctx.ui?.json?.(plan);
       } else {
-        const packageItems: string[] = [];
-        for (const pkg of plan.packages) {
-          const versionInfo = pkg.currentVersion && pkg.nextVersion
-            ? `${pkg.currentVersion} → ${pkg.nextVersion}`
-            : pkg.nextVersion || 'new';
-          packageItems.push(`${pkg.name}: ${versionInfo} [${pkg.bump}]`);
+        if (!ctx.ui) {
+          throw new Error('UI not available');
         }
+
+        const sections: Array<{ header?: string; items: string[] }> = [];
+
+        if (plan.packages.length === 0) {
+          sections.push({
+            items: ['No packages to release.'],
+          });
+        } else {
+          const packageItems: string[] = [];
+          for (const pkg of plan.packages) {
+            const versionInfo =
+              pkg.currentVersion && pkg.nextVersion
+                ? `${pkg.currentVersion} → ${pkg.nextVersion}`
+                : pkg.nextVersion || 'new';
+            packageItems.push(`${pkg.name}: ${versionInfo} [${pkg.bump}]`);
+          }
+          sections.push({
+            header: 'Packages',
+            items: packageItems,
+          });
+        }
+
         sections.push({
-          header: 'Packages',
-          items: packageItems,
+          header: 'Summary',
+          items: [
+            `Strategy: ${plan.strategy}`,
+            `Registry: ${plan.registry}`,
+            `Rollback: ${plan.rollbackEnabled ? 'enabled' : 'disabled'}`,
+          ],
+        });
+
+        ctx.ui.sideBox({
+          title: 'Release Preview',
+          sections,
+          status: 'info',
         });
       }
 
-      sections.push({
-        header: 'Summary',
-        items: [
-          `Strategy: ${plan.strategy}`,
-          `Registry: ${plan.registry}`,
-          `Rollback: ${plan.rollbackEnabled ? 'enabled' : 'disabled'}`,
-        ],
-      });
-
-      const outputText = ctx.ui.sideBox({
-        title: 'Release Preview',
-        sections,
-        status: 'info',
-        timing: ctx.tracker.total(),
-      });
-      ctx.ui.write(outputText);
-    }
-
-    return { ok: true, plan };
+      return { exitCode: 0, plan };
+    },
   },
 });

@@ -5,14 +5,14 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { PackageVersion, ReleasePlan } from './types';
-import type { ShellApi } from '@kb-labs/plugin-contracts';
+import type { ShellAPI } from '@kb-labs/sdk';
 import { createExecaShellAdapter } from './shell-adapter';
 
 export interface PublisherOptions {
   cwd: string;
   plan: ReleasePlan;
   dryRun?: boolean;
-  shell?: ShellApi;
+  shell?: ShellAPI;
 }
 
 export interface PublishingResult {
@@ -87,7 +87,7 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
         ['publish', '--access', 'public', '--registry', registry],
         {
           cwd: pkg.path,
-          timeoutMs: 60000,
+          timeout: 60000,
         }
       );
 
