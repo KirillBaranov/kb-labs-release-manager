@@ -185,7 +185,7 @@ async function analyzeGitCommits(ctx: PluginContextV3, pkgPath: string): Promise
         const parts = line.split('|');
         const sha = parts[0];
         const message = parts[1];
-        if (!sha || !message) continue;
+        if (!sha || !message) {continue;}
 
         const parsed = parseConventionalCommit(message);
         commits.push({
@@ -217,7 +217,7 @@ function parseConventionalCommit(message: string): { type: string } {
   }
 
   const type = match[1];
-  if (!type) return { type: 'unknown' };
+  if (!type) {return { type: 'unknown' };}
 
   return { type: type.toLowerCase() };
 }

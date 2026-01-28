@@ -63,7 +63,7 @@ export default defineHandler({
 
       for (const line of lines) {
         const [sha, message, author, date] = line.split('|');
-        if (!sha || !message) continue;
+        if (!sha || !message) {continue;}
 
         const parsed = parseConventionalCommit(message);
 
@@ -196,7 +196,7 @@ function parseConventionalCommit(message: string): {
  * Calculate suggested version bump based on commits
  */
 function calculateSuggestedBump(commits: GitCommit[]): 'major' | 'minor' | 'patch' | 'none' {
-  if (commits.length === 0) return 'none';
+  if (commits.length === 0) {return 'none';}
 
   // Priority: major > minor > patch > none
   let hasMajor = false;
@@ -204,14 +204,14 @@ function calculateSuggestedBump(commits: GitCommit[]): 'major' | 'minor' | 'patc
   let hasPatch = false;
 
   for (const commit of commits) {
-    if (commit.bump === 'major') hasMajor = true;
-    if (commit.bump === 'minor') hasMinor = true;
-    if (commit.bump === 'patch') hasPatch = true;
+    if (commit.bump === 'major') {hasMajor = true;}
+    if (commit.bump === 'minor') {hasMinor = true;}
+    if (commit.bump === 'patch') {hasPatch = true;}
   }
 
-  if (hasMajor) return 'major';
-  if (hasMinor) return 'minor';
-  if (hasPatch) return 'patch';
+  if (hasMajor) {return 'major';}
+  if (hasMinor) {return 'minor';}
+  if (hasPatch) {return 'patch';}
   return 'none';
 }
 

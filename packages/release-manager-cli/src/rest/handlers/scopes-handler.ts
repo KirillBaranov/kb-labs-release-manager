@@ -51,8 +51,8 @@ export default defineHandler({
       try {
         const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
 
-        if (!pkg.name) continue; // Skip packages without name
-        if (pkg.private === true) continue; // Skip private packages
+        if (!pkg.name) {continue;} // Skip packages without name
+        if (pkg.private === true) {continue;} // Skip private packages
 
         const pkgDir = join(pkgPath, '..');
 
