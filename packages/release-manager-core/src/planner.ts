@@ -74,8 +74,8 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
 function mapBumpStrategyToVersionStrategy(
   bumpStrategy: 'independent' | 'ripple' | 'lockstep'
 ): VersionStrategy {
-  if (bumpStrategy === 'lockstep') return 'lockstep';
-  if (bumpStrategy === 'ripple') return 'adaptive';
+  if (bumpStrategy === 'lockstep') {return 'lockstep';}
+  if (bumpStrategy === 'ripple') {return 'adaptive';}
   return 'independent';
 }
 
@@ -113,7 +113,9 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
   for (let i = 0; i < packageJsonPaths.length; i++) {
     // Освобождаем event loop каждые 10 файлов, чтобы спиннер мог обновиться
     if (i % 10 === 0) {
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => {
+        setImmediate(resolve);
+      });
     }
 
     const packageJsonPath = packageJsonPaths[i]!;
@@ -201,7 +203,9 @@ async function detectModifiedPackages(
   for (let i = 0; i < packages.length; i++) {
     // Освобождаем event loop каждые 10 пакетов
     if (i % 10 === 0) {
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => {
+        setImmediate(resolve);
+      });
     }
 
     const pkg = packages[i]!;

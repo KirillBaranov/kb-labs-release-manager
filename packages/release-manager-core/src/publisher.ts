@@ -333,7 +333,7 @@ function createPackageChangelog(pkg: PackageVersion, changelog: string): string 
 
   for (let i = 0; i < allHeaders.length; i++) {
     const match = allHeaders[i];
-    if (!match || !match.index) continue;
+    if (!match || !match.index) {continue;}
 
     if (packageHeaderPattern.test(match[0])) {
       startIdx = match.index;

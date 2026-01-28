@@ -13,7 +13,7 @@ export function renderText(report: ReleaseReport): string {
   // Checks
   if (report.result.checks) {
     for (const [id, result] of Object.entries(report.result.checks)) {
-      if (!result) continue;
+      if (!result) {continue;}
       lines.push(`[${id}] ${result.ok ? 'pass' : 'fail'}`);
       if (result.hint && !result.ok) {
         lines.push(`  ${result.hint}`);
@@ -27,7 +27,7 @@ export function renderText(report: ReleaseReport): string {
     for (const [pkgName, pkgChecks] of Object.entries(report.result.checksPerPackage)) {
       lines.push(`[${pkgName}]`);
       for (const [id, result] of Object.entries(pkgChecks)) {
-        if (!result) continue;
+        if (!result) {continue;}
         lines.push(`  [${id}] ${result.ok ? 'pass' : 'fail'}`);
         if (result.hint && !result.ok) {
           lines.push(`    ${result.hint}`);

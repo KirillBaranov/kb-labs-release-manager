@@ -44,7 +44,7 @@ export function applyVersionStrategy(
  * Result: Both get 2.0.0 (maximum bump = major)
  */
 function applyLockstep(packages: PackageVersion[]): PackageVersion[] {
-  if (packages.length === 0) return packages;
+  if (packages.length === 0) {return packages;}
 
   // Find the maximum bump level
   const maxBump = getMaxBump(packages);

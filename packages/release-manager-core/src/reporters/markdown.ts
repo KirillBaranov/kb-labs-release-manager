@@ -27,7 +27,7 @@ export function renderMarkdown(report: ReleaseReport): string {
     lines.push('');
 
     for (const [id, result] of Object.entries(report.result.checks)) {
-      if (!result) continue;
+      if (!result) {continue;}
       const icon = result.ok ? '✅' : '❌';
       lines.push(`- ${icon} **${id}**: ${result.ok ? 'PASSED' : 'FAILED'}`);
       if (result.hint && !result.ok) {
@@ -46,7 +46,7 @@ export function renderMarkdown(report: ReleaseReport): string {
       lines.push(`### ${pkgName}`);
       lines.push('');
       for (const [id, result] of Object.entries(pkgChecks)) {
-        if (!result) continue;
+        if (!result) {continue;}
         const icon = result.ok ? '✅' : '❌';
         lines.push(`- ${icon} **${id}**: ${result.ok ? 'PASSED' : 'FAILED'}`);
         if (result.hint && !result.ok) {
