@@ -62,7 +62,7 @@ function inferProviderType(url: string): 'github' | 'gitlab' | 'generic' {
  * Format commit link
  */
 export function formatCommitLink(provider: GitProvider, sha: string): string | undefined {
-  if (!provider.baseUrl) return undefined;
+  if (!provider.baseUrl) {return undefined;}
   
   if (provider.type === 'github') {
     return `${provider.baseUrl}/commit/${sha}`;
@@ -78,7 +78,7 @@ export function formatCommitLink(provider: GitProvider, sha: string): string | u
  * Format PR link
  */
 export function formatPrLink(provider: GitProvider, prNumber: string): string | undefined {
-  if (!provider.baseUrl) return undefined;
+  if (!provider.baseUrl) {return undefined;}
   
   if (provider.type === 'github') {
     return `${provider.baseUrl}/pull/${prNumber}`;
@@ -94,7 +94,7 @@ export function formatPrLink(provider: GitProvider, prNumber: string): string | 
  * Format issue link
  */
 export function formatIssueLink(provider: GitProvider, issueNumber: string): string | undefined {
-  if (!provider.baseUrl) return undefined;
+  if (!provider.baseUrl) {return undefined;}
   
   if (provider.type === 'github') {
     return `${provider.baseUrl}/issues/${issueNumber}`;
@@ -132,8 +132,8 @@ export function enhanceChangeWithLinks(change: Change, provider: GitProvider): C
     }
   }
   
-  if (!providerLinks.pr!.length) delete providerLinks.pr;
-  if (!providerLinks.issues!.length) delete providerLinks.issues;
+  if (!providerLinks.pr!.length) {delete providerLinks.pr;}
+  if (!providerLinks.issues!.length) {delete providerLinks.issues;}
   
   return {
     ...change,

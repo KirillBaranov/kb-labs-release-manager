@@ -59,7 +59,7 @@ export function render(data: TemplateData): string {
 
   for (const type of commitTypes) {
     const commits = changes[type];
-    if (!commits || commits.length === 0) continue;
+    if (!commits || commits.length === 0) {continue;}
 
     const sectionTitle = getSectionTitle(type, locale);
     lines.push(`### ${sectionTitle}`);

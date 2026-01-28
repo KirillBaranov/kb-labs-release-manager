@@ -50,7 +50,7 @@ export async function saveCache(cacheDir: string, cache: ChangeCache): Promise<v
  * Get cached commit if exists
  */
 export function getCachedChange(cache: ChangeCache | null, sha: string): Change | null {
-  if (!cache) return null;
+  if (!cache) {return null;}
   
   return cache.commits[sha] || null;
 }
@@ -135,7 +135,7 @@ export function getLastTag(
   cache: ChangeCache | null,
   packageName: string
 ): { tag: string; sha: string } | null {
-  if (!cache) return null;
+  if (!cache) {return null;}
   
   return cache.lastTags[packageName] || null;
 }
@@ -152,7 +152,7 @@ export async function isCacheValid(
   currentHead?: string
 ): Promise<boolean> {
   const cache = await loadCache(cacheDir);
-  if (!cache) return false;
+  if (!cache) {return false;}
   
   // Check graph hash
   if (currentGraphHash && cache.meta.graphHash && cache.meta.graphHash !== currentGraphHash) {

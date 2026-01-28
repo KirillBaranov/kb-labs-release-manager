@@ -14,9 +14,9 @@ export function computeBump(changes: Change[]): VersionBump {
   const hasFeature = changes.some(c => c.type === 'feat');
   const hasFix = changes.some(c => ['fix', 'perf', 'refactor'].includes(c.type));
   
-  if (hasBreaking) return 'major';
-  if (hasFeature) return 'minor';
-  if (hasFix) return 'patch';
+  if (hasBreaking) {return 'major';}
+  if (hasFeature) {return 'minor';}
+  if (hasFix) {return 'patch';}
   return 'none';
 }
 
@@ -35,7 +35,7 @@ export function computeNextVersion(
   if (preid) {
     // Pre-release version: 1.0.0 -> 1.1.0-rc.1
     const nextVersion = semver.inc(currentVersion, bump === 'major' ? 'major' : bump === 'minor' ? 'minor' : 'patch');
-    if (!nextVersion) return currentVersion;
+    if (!nextVersion) {return currentVersion;}
     
     // Check if already pre-release
     const prerelease = semver.prerelease(nextVersion);

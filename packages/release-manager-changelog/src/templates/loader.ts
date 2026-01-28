@@ -32,11 +32,11 @@ export async function loadTemplate(
 ): Promise<ChangelogTemplate> {
   // Check if builtin template
   if (isBuiltinTemplate(templateName)) {
-    return await loadBuiltinTemplate(templateName);
+    return loadBuiltinTemplate(templateName);
   }
 
   // Load custom template from filesystem
-  return await loadCustomTemplate(templateName, cwd);
+  return loadCustomTemplate(templateName, cwd);
 }
 
 /**

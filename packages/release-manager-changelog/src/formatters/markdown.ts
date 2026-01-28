@@ -35,7 +35,7 @@ export function formatPackageAsMarkdown(
   
   // Render by type groups
   for (const [type, changes] of Object.entries(groupedChanges)) {
-    if (changes.length === 0) continue;
+    if (changes.length === 0) {continue;}
     
     const sectionTitle = formatSectionTitle(type as CommitType, locale);
     lines.push(`### ${sectionTitle}`);

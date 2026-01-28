@@ -3,7 +3,7 @@
  * Single git log traversal with streaming parse
  */
 
-// @ts-ignore - conventional-commits-parser has no types
+// @ts-expect-error - conventional-commits-parser has no types
 import conventionalParser from 'conventional-commits-parser';
 import simpleGit from 'simple-git';
 import type { Change, CommitType, BreakingChange, Reference, Author, ParseOptions } from './types';
@@ -81,7 +81,7 @@ function parseGitLogOutput(
 
   for (let i = 0; i < commits.length; i++) {
     const commitBlock = commits[i];
-    if (!commitBlock) continue;
+    if (!commitBlock) {continue;}
 
     // After split by --COMMIT_FOOTER--, format is:
     // Block 0: "SHA\0author...\0body\n"
@@ -106,10 +106,10 @@ function parseGitLogOutput(
     }
 
     // File lines come from NEXT block (before next commit's header)
-    let fileLines: string[] = [];
+    const fileLines: string[] = [];
     if (i + 1 < commits.length) {
       const nextBlock = commits[i + 1];
-      if (!nextBlock) continue;
+      if (!nextBlock) {continue;}
 
       const nextLines = nextBlock.split('\n');
 
@@ -268,14 +268,14 @@ function parseFileChanges(lines: string[]): FileChange[] {
   const changes: FileChange[] = [];
   
   for (const line of lines) {
-    if (!line.trim() || line.trim().startsWith('diff --git')) continue;
+    if (!line.trim() || line.trim().startsWith('diff --git')) {continue;}
     
     // Parse status + file: "A\tpath/to/file" or "R100\told\to/new"
     const match = line.match(/^([ADMRT])\t(.*?)$/);
-    if (!match) continue;
+    if (!match) {continue;}
 
     const [, status, path] = match;
-    if (!path || !status) continue;
+    if (!path || !status) {continue;}
     
     if (status === 'R' || status === 'C') {
       // Rename/Copy: path contains old\tnew
@@ -355,7 +355,7 @@ function extractCoAuthors(footers: string[]): Author[] {
  * Extract revert target SHA
  */
 function extractRevertOf(body: string | undefined, footers: string[]): string | undefined {
-  if (!body) return undefined;
+  if (!body) {return undefined;}
 
   const match = body.match(/revert (?:of\s+)?([0-9a-f]{40})/i);
   return match ? match[1] : undefined;
@@ -367,7 +367,7 @@ function extractRevertOf(body: string | undefined, footers: string[]): string | 
 function extractCherryPickOf(footers: string[]): string | undefined {
   for (const footer of footers) {
     const match = footer.match(/cherry picked from (.+)/i);
-    if (match && match[1]) return match[1].trim();
+    if (match && match[1]) {return match[1].trim();}
   }
   return undefined;
 }

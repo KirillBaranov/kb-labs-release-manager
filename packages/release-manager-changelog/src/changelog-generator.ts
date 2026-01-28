@@ -142,10 +142,10 @@ export async function generateChangelog(
     const hasPerf = enhancedChanges.some(c => c.type === 'perf');
 
     let reason: 'breaking' | 'feat' | 'fix' | 'perf' | 'ripple' | 'manual' = 'manual';
-    if (hasBreaking) reason = 'breaking';
-    else if (hasFeat) reason = 'feat';
-    else if (hasFix) reason = 'fix';
-    else if (hasPerf) reason = 'perf';
+    if (hasBreaking) {reason = 'breaking';}
+    else if (hasFeat) {reason = 'feat';}
+    else if (hasFix) {reason = 'fix';}
+    else if (hasPerf) {reason = 'perf';}
 
     return {
       name: pkg.name,
@@ -170,7 +170,7 @@ export async function generateChangelog(
   const formattedPackages: string[] = [];
   for (let i = 0; i < packageReleases.length; i++) {
     const pkg = packageReleases[i];
-    if (!pkg) continue;
+    if (!pkg) {continue;}
 
     onProgress?.(`Formatting changelog for ${pkg.name} (${i + 1}/${packageReleases.length})...`);
 

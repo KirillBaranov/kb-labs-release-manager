@@ -178,7 +178,7 @@ function buildChangelogFooter(locale: 'en' | 'ru'): string {
 function groupByType(changes: Change[]): Record<string, Change[]> {
   const grouped: Record<string, Change[]> = {};
   for (const change of changes) {
-    if (!grouped[change.type]) grouped[change.type] = [];
+    if (!grouped[change.type]) {grouped[change.type] = [];}
     grouped[change.type]!.push(change);
   }
   return grouped;

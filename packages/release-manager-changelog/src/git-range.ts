@@ -176,7 +176,7 @@ export function parseGitUrl(url: string): {
   // Match: git@github.com:owner/repo.git
   const match = url.match(/(?:https:\/\/([^/]+)|git@([^:]+):)(?:.*?\/)?([^/]+)\/([^/]+)(?:\.git)?$/);
   
-  if (!match) return null;
+  if (!match) {return null;}
   
   const host = match[1] || match[2] || '';
   const owner = match[3] || '';
