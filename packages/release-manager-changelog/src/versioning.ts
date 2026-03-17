@@ -4,7 +4,7 @@
  */
 
 import semver from 'semver';
-import type { Change, VersionBump, PackageImpact } from './types';
+import type { Change, VersionBump } from './types';
 
 /**
  * Compute version bump from changes

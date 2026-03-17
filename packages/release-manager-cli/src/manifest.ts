@@ -20,7 +20,6 @@ import {
   ciEnvironmentPreset,
 } from '@kb-labs/sdk';
 import {
-  pluginContractsManifest,
   RELEASE_BASE_PATH,
   RELEASE_ROUTES,
   RELEASE_CACHE_PREFIX,
@@ -55,7 +54,7 @@ const pluginPermissions = combinePermissions()
     // Note: deny patterns (*.key, *.secret, node_modules) are enforced by platform
   })
   .withShell({
-    allow: ['git'], // Git operations for timeline, tagging, commits
+    allow: ['git', 'npm'], // git: timeline/tagging/commits, npm: publish packages
   })
   .withPlatform({
     cache: [RELEASE_CACHE_PREFIX], // Cache namespace prefix for plan/changelog caching
@@ -526,6 +525,30 @@ export const manifest = {
           zod: '@kb-labs/release-manager-contracts#ReleaseChecklistSchema',
         },
       },
+      // GET /checks - Get list of configured checks (without running them)
+      {
+        method: 'GET',
+        path: RELEASE_ROUTES.CHECKS,
+        handler: './rest/handlers/get-checks-handler.js#default',
+        handlerPath: './rest/handlers/get-checks-handler.js',
+        output: {
+          zod: '@kb-labs/release-manager-contracts#GetChecksResponseSchema',
+        },
+      },
+      // POST /checks/run - Run pre-release checks from kb.config.json release.checks
+      {
+        method: 'POST',
+        path: RELEASE_ROUTES.CHECKS_RUN,
+        handler: './rest/handlers/run-checks-handler.js#default',
+        handlerPath: './rest/handlers/run-checks-handler.js',
+        input: {
+          zod: '@kb-labs/release-manager-contracts#RunChecksRequestSchema',
+        },
+        output: {
+          zod: '@kb-labs/release-manager-contracts#RunChecksResponseSchema',
+        },
+        timeoutMs: 600000, // 10 minutes - all checks combined
+      },
     ],
   },
 
@@ -604,6 +627,10 @@ export const manifest = {
   //     },
   //   ],
   // },
+
+  // Auto-detects kb.config.json section for useConfig()
+  // maps to profiles[].products.release in kb.config.json
+  configSection: 'release',
 
   capabilities: ['fs:read', 'fs:write'],
 

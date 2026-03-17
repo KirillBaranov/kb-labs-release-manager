@@ -146,12 +146,20 @@ export default defineHandler({
       }
     }
 
+    // Check npm auth token
+    const hasNpmToken = !!(process.env.NPM_TOKEN ?? process.env.NODE_AUTH_TOKEN);
+    const npmStatus: ChecklistItemStatus = hasNpmToken ? 'ready' : 'error';
+    const npmMessage = hasNpmToken
+      ? 'npm token configured'
+      : 'Set NPM_TOKEN (granular access token) in environment';
+
     // Determine if can publish
     const canPublish =
       planStatus === 'ready' &&
       changelogStatus === 'ready' &&
       buildStatus === 'ready' &&
-      previewStatus === 'ready';
+      previewStatus === 'ready' &&
+      npmStatus === 'ready';
 
     return {
       scope,
@@ -177,6 +185,10 @@ export default defineHandler({
         message: previewMessage,
         filesCount,
         totalSize,
+      },
+      npm: {
+        status: npmStatus,
+        message: npmMessage,
       },
       canPublish,
     };

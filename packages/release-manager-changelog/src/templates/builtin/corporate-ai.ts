@@ -7,7 +7,7 @@
  * - Graceful degradation if LLM unavailable (falls back to basic descriptions)
  */
 
-import type { ChangelogTemplate, TemplateData, PlatformLike } from '../types';
+import type { TemplateData, PlatformLike } from '../types';
 import type { Change } from '../../types';
 
 export const version = '1.0' as const;
@@ -16,11 +16,12 @@ export async function render(data: TemplateData, platform?: PlatformLike): Promi
   const { package: pkg, breaking, changes, locale } = data;
   const lines: string[] = [];
 
-  // Header with version bump reason
+  // Header: standard OSS format  ## [version] - YYYY-MM-DD
+  const date = new Date().toISOString().split('T')[0]!;
   const reasonLabel = getReasonLabel(pkg.reason, locale);
-  lines.push(`## ${pkg.name} ${pkg.next}`);
+  lines.push(`## [${pkg.next}] - ${date}`);
   lines.push('');
-  lines.push(`**${pkg.prev} → ${pkg.next}** (${reasonLabel})`);
+  lines.push(`> **${pkg.name}** ${pkg.prev} → ${pkg.next} (${reasonLabel})`);
   lines.push('');
 
   // Breaking changes (critical section)
@@ -70,56 +71,21 @@ export async function render(data: TemplateData, platform?: PlatformLike): Promi
     lines.push('');
   }
 
-  // Refactoring
-  if (changes.refactor && changes.refactor.length > 0) {
-    const refactorTitle = locale === 'ru' ? '♻️ Рефакторинг' : '♻️ Code Refactoring';
-    lines.push(`### ${refactorTitle}`);
+  // Reverts — user-visible (something was undone)
+  if (changes.revert && changes.revert.length > 0) {
+    const revertTitle = locale === 'ru' ? '⏪ Откаты' : '⏪ Reverts';
+    lines.push(`### ${revertTitle}`);
     lines.push('');
 
-    const refactorText = await enhanceGroup(platform, changes.refactor, 'refactoring', locale);
-    lines.push(refactorText);
-    lines.push('');
-  }
-
-  // Documentation
-  if (changes.docs && changes.docs.length > 0) {
-    const docsTitle = locale === 'ru' ? '📝 Документация' : '📝 Documentation';
-    lines.push(`### ${docsTitle}`);
-    lines.push('');
-
-    const docsText = await enhanceGroup(platform, changes.docs, 'documentation', locale);
-    lines.push(docsText);
+    const revertText = await enhanceGroup(platform, changes.revert, 'reverts', locale);
+    lines.push(revertText);
     lines.push('');
   }
 
-  // Professional footer
-  const footer = buildChangelogFooter(locale);
-  lines.push(footer);
+  // chore / build / ci / test / style / refactor / docs intentionally omitted:
+  // they are internal changes and not relevant to package consumers.
 
-  return lines.join('\n').trim();
-}
-
-/**
- * Build professional changelog footer
- */
-function buildChangelogFooter(locale: 'en' | 'ru'): string {
-  const year = new Date().getFullYear();
-
-  if (locale === 'ru') {
-    return `---
-
-*Сгенерировано автоматически с помощью [**@kb-labs/release-manager**](https://github.com/kb-labs/kb-labs)*
-*Часть экосистемы **KB Labs Platform** — профессиональные инструменты для разработки*
-
-<sub>© ${year} KB Labs. Released under KB Public License v1.1</sub>`;
-  }
-
-  return `---
-
-*Generated automatically by [**@kb-labs/release-manager**](https://github.com/kb-labs/kb-labs)*
-*Part of the **KB Labs Platform** — Professional developer tools ecosystem*
-
-<sub>© ${year} KB Labs. Released under KB Public License v1.1</sub>`;
+  return lines.join('\n').trimEnd();
 }
 
 /**
@@ -144,6 +110,7 @@ async function enhanceGroup(
       scope: c.scope || 'general',
       subject: c.subject,
       body: c.body,
+      refs: c.refs && c.refs.length > 0 ? c.refs.map(r => `#${r.id}`).join(', ') : undefined,
     }));
 
     const prompt = buildEnhancementPrompt(commitsContext, groupType, locale);
@@ -191,13 +158,15 @@ async function enhanceGroup(
  * Build prompt for LLM to enhance a group
  */
 function buildEnhancementPrompt(
-  commits: Array<{ scope: string; subject: string; body?: string }>,
+  commits: Array<{ scope: string; subject: string; body?: string; refs?: string }>,
   groupType: string,
   locale: 'en' | 'ru'
 ): string {
   const lang = locale === 'ru' ? 'Russian' : 'English';
 
-  const commitsText = commits.map(c => `- ${c.scope}: ${c.subject}`).join('\n');
+  const commitsText = commits
+    .map(c => `- ${c.scope}: ${c.subject}${c.refs ? ` [refs: ${c.refs}]` : ''}`)
+    .join('\n');
 
   return `You are writing a professional changelog for a software release.
 
@@ -212,24 +181,45 @@ Task: Write a clear, user-focused description for each commit as a markdown list
 - Use clear, non-technical language when possible
 - Keep each item to 1-2 sentences
 - Start with scope in **bold** if present
+- If a commit has refs like [refs: #123], append them at end of the line as (#123)
 
 Example output format:
-- **api**: Enables async request handling, improving throughput by 40% under high load
+- **api**: Enables async request handling, improving throughput under high load (#42)
 - **logger**: Fixes memory leak that occurred after 1000+ log entries
 
 Write ONLY the markdown list, no explanations or meta-commentary.`;
 }
 
 /**
- * Basic formatting without LLM (fallback)
+ * Basic formatting without LLM (fallback).
+ * Includes issue/PR refs when present.
  */
 function formatBasicGroup(commits: Change[]): string {
   return commits
     .map(c => {
-      const scope = c.scope ? `**${c.scope}**` : 'general';
-      return `- ${scope}: ${c.subject}`;
+      const scope = c.scope ? `**${c.scope}**` : '';
+      const text = scope ? `${scope}: ${c.subject}` : c.subject;
+      const refs = formatRefs(c);
+      return refs ? `- ${text} (${refs})` : `- ${text}`;
     })
     .join('\n');
+}
+
+/**
+ * Render issue/PR refs as comma-separated links or plain numbers.
+ */
+function formatRefs(change: Change): string {
+  if (!change.refs || change.refs.length === 0) { return ''; }
+
+  return change.refs
+    .map(ref => {
+      const issueLink = change.providerLinks?.issues?.find(l => l.endsWith(`/${ref.id}`));
+      if (issueLink) { return `[#${ref.id}](${issueLink})`; }
+      const prLink = change.providerLinks?.pr?.find(l => l.endsWith(`/${ref.id}`));
+      if (prLink) { return `[#${ref.id}](${prLink})`; }
+      return `#${ref.id}`;
+    })
+    .join(', ');
 }
 
 function getReasonLabel(reason: string, locale: 'en' | 'ru'): string {

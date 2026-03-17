@@ -1,13 +1,17 @@
 /**
- * Programmatic npm publishing using libnpmpublish
- * Works in sandboxed environments (REST handlers) without shell access
+ * Programmatic npm publishing for REST handlers (non-interactive context)
+ *
+ * Uses `npm publish` CLI via spawn with NODE_AUTH_TOKEN env variable.
+ * This is the correct approach for granular access tokens (classic tokens
+ * were revoked by npm in December 2025).
+ *
+ * Token resolution order:
+ * 1. options.token (explicit override)
+ * 2. NPM_TOKEN env variable
+ * 3. NODE_AUTH_TOKEN env variable
  */
 
-import { publish } from 'libnpmpublish';
-import packlist from 'npm-packlist';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { create as tarCreate } from 'tar';
+import { spawn } from 'node:child_process';
 import { useLogger } from '@kb-labs/sdk';
 
 export interface PackageToPublish {
@@ -42,197 +46,144 @@ export interface ProgrammaticPublishResult {
 }
 
 /**
- * Read npm token from environment or .npmrc
+ * Resolve npm auth token from options or environment
  */
-async function getNpmToken(): Promise<string | undefined> {
-  // 1. Check environment variable
-  if (process.env.NPM_TOKEN) {
-    return process.env.NPM_TOKEN;
-  }
+function resolveToken(token?: string): string | undefined {
+  return token ?? process.env.NPM_TOKEN ?? process.env.NODE_AUTH_TOKEN;
+}
 
-  // 2. Try to read from ~/.npmrc
-  const homeDir = process.env.HOME || process.env.USERPROFILE;
-  if (homeDir) {
-    try {
-      const npmrcPath = join(homeDir, '.npmrc');
-      const npmrc = await readFile(npmrcPath, 'utf-8');
+/**
+ * Publish a single package using npm CLI
+ * Passes auth token via NODE_AUTH_TOKEN env (recommended for granular tokens)
+ */
+function publishSinglePackage(options: {
+  packagePath: string;
+  token: string | undefined;
+  otp?: string;
+  dryRun?: boolean;
+  tag?: string;
+  access?: string;
+  registry?: string;
+}): Promise<void> {
+  const { packagePath, token, otp, dryRun, tag, access, registry } = options;
 
-      // Look for //registry.npmjs.org/:_authToken=...
-      const match = npmrc.match(/\/\/registry\.npmjs\.org\/:_authToken=(.+)/);
-      if (match) {
-        return match[1].trim();
-      }
-    } catch {
-      // .npmrc doesn't exist or not readable
+  return new Promise((resolve, reject) => {
+    const args = ['publish'];
+
+    if (dryRun) {
+      args.push('--dry-run');
     }
-  }
 
-  return undefined;
-}
+    if (tag) {
+      args.push(`--tag=${tag}`);
+    }
 
-/**
- * Create a tarball buffer from package directory
- */
-async function createTarball(packagePath: string): Promise<Buffer> {
-  // Read package.json to create tree object for npm-packlist v10+
-  const pkgJsonPath = join(packagePath, 'package.json');
-  const pkgJson = JSON.parse(await readFile(pkgJsonPath, 'utf-8'));
+    if (access) {
+      args.push(`--access=${access}`);
+    }
 
-  // npm-packlist v10+ requires a tree-like arborist node with:
-  // - path: package path
-  // - package: package.json content (must have bundleDependencies if not isProjectRoot)
-  // - isProjectRoot: true to use bundleDependencies instead of all deps
-  const tree = {
-    path: packagePath,
-    isProjectRoot: true,
-    package: {
-      ...pkgJson,
-      bundleDependencies: pkgJson.bundleDependencies || [],
-    },
-  };
-  const files = await packlist(tree);
+    if (registry) {
+      args.push(`--registry=${registry}`);
+    }
 
-  if (files.length === 0) {
-    throw new Error(`No files to publish in ${packagePath}`);
-  }
+    if (otp) {
+      args.push(`--otp=${otp}`);
+    }
 
-  // Create tar stream with gzip compression
-  const chunks: Buffer[] = [];
+    // Pass token via env — this is the correct way for granular tokens
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (token) {
+      env['NODE_AUTH_TOKEN'] = token;
+    }
 
-  // Use tar.create to create tarball (tar v7 API)
-  const tarStream = tarCreate(
-    {
+    const child = spawn('npm', args, {
       cwd: packagePath,
-      gzip: true,
-      prefix: 'package/',
-    },
-    files
-  );
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
+      env,
+    });
 
-  for await (const chunk of tarStream) {
-    chunks.push(Buffer.from(chunk));
-  }
+    let stdout = '';
+    let stderr = '';
 
-  return Buffer.concat(chunks);
+    child.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code: number | null) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr || stdout || `npm publish exited with code ${code}`));
+      }
+    });
+
+    child.on('error', (err: Error) => {
+      reject(err);
+    });
+  });
 }
 
 /**
- * Publish packages programmatically using libnpmpublish
- * This works in sandboxed environments without shell access
+ * Publish packages programmatically (non-interactive, for REST handlers)
+ * Uses npm CLI with NODE_AUTH_TOKEN — works with granular access tokens.
  */
 export async function publishPackagesProgrammatic(
   options: ProgrammaticPublishOptions
 ): Promise<ProgrammaticPublishResult> {
-  const { packages, dryRun, otp, tag, access, registry = 'https://registry.npmjs.org/' } = options;
+  const { packages, dryRun, otp, tag, access, registry } = options;
   const logger = useLogger();
 
-  const results: PublishResult[] = [];
-
-  // Get token
-  const token = options.token || (await getNpmToken());
+  const token = resolveToken(options.token);
 
   if (!token && !dryRun) {
+    const error = 'No npm token found. Set NPM_TOKEN (or NODE_AUTH_TOKEN) in environment.';
+    logger.error(error);
     return {
       results: [],
       published: [],
       failed: packages.map((p) => `${p.name}@${p.version}`),
       skipped: [],
-      errors: ['No npm token found. Set NPM_TOKEN env or configure ~/.npmrc'],
+      errors: [error],
     };
   }
 
+  const results: PublishResult[] = [];
+
   for (const pkg of packages) {
+    logger.info(`Publishing ${pkg.name}@${pkg.version}`, { path: pkg.path, dryRun });
+
     try {
-      // Read package.json manifest
-      const manifestPath = join(pkg.path, 'package.json');
-      const manifestRaw = await readFile(manifestPath, 'utf-8');
-      const manifest = JSON.parse(manifestRaw);
-
-      // Verify version matches (skip for dry-run since bump hasn't happened yet)
-      if (!dryRun && manifest.version !== pkg.version) {
-        throw new Error(
-          `Version mismatch: package.json has ${manifest.version}, expected ${pkg.version}`
-        );
-      }
-
-      if (dryRun) {
-        // For dry-run, just validate we can read files
-        // npm-packlist v10+ requires a tree-like arborist node
-        const tree = {
-          path: pkg.path,
-          isProjectRoot: true,
-          package: {
-            ...manifest,
-            bundleDependencies: manifest.bundleDependencies || [],
-          },
-        };
-        const files = await packlist(tree);
-        if (files.length === 0) {
-          throw new Error('No files to publish');
-        }
-
-        results.push({
-          name: pkg.name,
-          version: pkg.version,
-          success: true,
-        });
-        continue;
-      }
-
-      // Create tarball
-      const tarball = await createTarball(pkg.path);
-
-      // Publish using libnpmpublish
-      await publish(manifest, tarball, {
-        registry,
+      await publishSinglePackage({
+        packagePath: pkg.path,
         token,
         otp,
-        access: access || (manifest.publishConfig?.access as 'public' | 'restricted') || 'public',
-        defaultTag: tag || 'latest',
+        dryRun,
+        tag,
+        access: access ?? 'public',
+        registry,
       });
 
-      results.push({
-        name: pkg.name,
-        version: pkg.version,
-        success: true,
-      });
-    } catch (error: any) {
-      // Extract detailed error info from npm errors
-      let errorMessage = error.message || String(error);
+      results.push({ name: pkg.name, version: pkg.version, success: true });
+      logger.info(`Published ${pkg.name}@${pkg.version}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
 
-      // Log full error for debugging via logger
-      logger.error('Publish error details', error, {
-        code: error.code,
-        statusCode: error.statusCode,
-        body: error.body,
-        headers: error.headers,
-        pkgid: error.pkgid,
-        uri: error.uri,
-      });
-
-      // libnpmpublish errors often have more details
-      if (error.code) {
-        errorMessage = `[${error.code}] ${errorMessage}`;
-      }
-      if (error.statusCode) {
-        errorMessage = `HTTP ${error.statusCode}: ${errorMessage}`;
-      }
-      if (error.body) {
-        // npm registry returns error details in body
-        const body = typeof error.body === 'string' ? error.body : JSON.stringify(error.body);
-        errorMessage = `${errorMessage} | Body: ${body}`;
-      }
+      logger.error(`Failed to publish ${pkg.name}@${pkg.version}`, undefined, { error: message });
 
       results.push({
         name: pkg.name,
         version: pkg.version,
         success: false,
-        error: errorMessage,
+        error: message,
       });
     }
   }
 
-  // Build result summary
   const published = results.filter((r) => r.success).map((r) => `${r.name}@${r.version}`);
   const failed = results.filter((r) => !r.success).map((r) => `${r.name}@${r.version}`);
   const errors = results.filter((r) => !r.success && r.error).map((r) => `${r.name}: ${r.error}`);

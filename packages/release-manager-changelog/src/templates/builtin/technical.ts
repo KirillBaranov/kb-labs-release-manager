@@ -9,7 +9,7 @@
  * - Conventional commits grouping
  */
 
-import type { ChangelogTemplate, TemplateData } from '../types';
+import type { TemplateData } from '../types';
 import type { Change } from '../../types';
 
 export const version = '1.0' as const;
@@ -18,10 +18,11 @@ export function render(data: TemplateData): string {
   const { package: pkg, breaking, changes, locale } = data;
   const lines: string[] = [];
 
-  // Header
-  lines.push(`## ${pkg.name} ${pkg.next}`);
+  // Header: standard OSS format  ## [version] - YYYY-MM-DD
+  const date = new Date().toISOString().split('T')[0]!;
+  lines.push(`## [${pkg.next}] - ${date}`);
   lines.push('');
-  lines.push(`\`${pkg.prev}\` → \`${pkg.next}\` (${pkg.bump})`);
+  lines.push(`> **${pkg.name}** \`${pkg.prev}\` → \`${pkg.next}\` (${pkg.bump})`);
   lines.push('');
 
   // Breaking changes with technical details

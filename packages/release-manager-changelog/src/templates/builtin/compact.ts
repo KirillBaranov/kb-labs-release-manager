@@ -8,7 +8,7 @@
  * - Perfect for automated consumption
  */
 
-import type { ChangelogTemplate, TemplateData } from '../types';
+import type { TemplateData } from '../types';
 
 export const version = '1.0' as const;
 
@@ -16,8 +16,10 @@ export function render(data: TemplateData): string {
   const { package: pkg, breaking, changes } = data;
   const lines: string[] = [];
 
-  // Header (minimal)
-  lines.push(`## ${pkg.name} ${pkg.next}`);
+  // Header: standard OSS format
+  const date = new Date().toISOString().split('T')[0]!;
+  lines.push(`## [${pkg.next}] - ${date}`);
+  lines.push(`> **${pkg.name}**`);
   lines.push('');
 
   // Breaking changes (compact list)

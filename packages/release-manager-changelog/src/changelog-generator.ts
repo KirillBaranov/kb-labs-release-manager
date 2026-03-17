@@ -9,6 +9,7 @@ import { resolveGitRange } from './git-range';
 import { parseCommits } from './parser';
 import { detectProvider, enhanceChangeWithLinks } from './providers';
 import { createReleaseManifest, formatAsJson } from './formatters/json';
+import { formatLockstepChangelog } from './formatters/markdown';
 import { loadTemplate, packageToTemplateData } from './templates';
 
 /**
@@ -135,11 +136,41 @@ export async function generateChangelog(
 
   // Step 5: Build package releases
   onProgress?.('Building package releases...');
+
+  // Normalize a package path to a relative-from-gitCwd prefix for matching against
+  // filesChanged entries (which git reports relative to gitCwd).
+  function normalizePkgPath(pkgPath: string): string {
+    // Prefer normalizing relative to gitCwd (where git was run from),
+    // then fall back to repoRoot.
+    let rel: string;
+    if (pkgPath.startsWith(gitCwd)) {
+      rel = pkgPath.slice(gitCwd.length).replace(/^\/+/, '');
+    } else if (pkgPath.startsWith(repoRoot)) {
+      rel = pkgPath.slice(repoRoot.length).replace(/^\/+/, '');
+    } else {
+      rel = pkgPath.replace(/^\/+/, '');
+    }
+    return rel.endsWith('/') ? rel : rel + '/';
+  }
+
   const packageReleases: PackageRelease[] = packages.map(pkg => {
-    const hasBreaking = enhancedChanges.some(c => c.breaking);
-    const hasFeat = enhancedChanges.some(c => c.type === 'feat');
-    const hasFix = enhancedChanges.some(c => c.type === 'fix');
-    const hasPerf = enhancedChanges.some(c => c.type === 'perf');
+    const pkgPrefix = normalizePkgPath(pkg.path);
+
+    // Filter changes that touched at least one file inside this package's directory.
+    // Falls back to all changes when the package sits at repo root (monorepo root release).
+    const isRoot = pkgPrefix === '/' || pkgPrefix === '' || pkgPrefix === './';
+    const pkgChanges = isRoot
+      ? enhancedChanges
+      : enhancedChanges.filter(c =>
+          !c.filesChanged || c.filesChanged.length === 0
+            ? true // keep commits with no file info (e.g. merge commits, empty commits)
+            : c.filesChanged.some(f => f.startsWith(pkgPrefix))
+        );
+
+    const hasBreaking = pkgChanges.some(c => c.breaking && c.breaking.length > 0);
+    const hasFeat = pkgChanges.some(c => c.type === 'feat');
+    const hasFix = pkgChanges.some(c => c.type === 'fix');
+    const hasPerf = pkgChanges.some(c => c.type === 'perf');
 
     let reason: 'breaking' | 'feat' | 'fix' | 'perf' | 'ripple' | 'manual' = 'manual';
     if (hasBreaking) {reason = 'breaking';}
@@ -153,35 +184,47 @@ export async function generateChangelog(
       next: pkg.nextVersion,
       bump: pkg.bump,
       reason,
-      breaking: enhancedChanges.filter(c => c.breaking).flatMap(c => c.breaking!),
-      changes: enhancedChanges,
+      breaking: pkgChanges.filter(c => c.breaking && c.breaking.length > 0).flatMap(c => c.breaking!),
+      changes: pkgChanges,
     };
   });
 
   // Step 6: Create release manifest
   const manifest = createReleaseManifest(range, packageReleases);
 
-  // Step 7: Load template and format
-  const templateName = changelogConfig?.template || 'corporate-ai';
-  onProgress?.(`Loading template "${templateName}"...`);
-  const template = await loadTemplate(templateName, repoRoot);
+  // Step 7: Detect lockstep — all packages share the same next version
+  const uniqueNextVersions = new Set(packageReleases.map(p => p.next));
+  const isLockstep = packageReleases.length > 1 && uniqueNextVersions.size === 1;
 
-  // Step 8: Format each package
-  const formattedPackages: string[] = [];
-  for (let i = 0; i < packageReleases.length; i++) {
-    const pkg = packageReleases[i];
-    if (!pkg) {continue;}
+  let markdown: string;
 
-    onProgress?.(`Formatting changelog for ${pkg.name} (${i + 1}/${packageReleases.length})...`);
+  if (isLockstep) {
+    // Consolidated single-section changelog for lockstep monorepo releases
+    onProgress?.('Formatting consolidated lockstep changelog...');
+    const sharedVersion = packageReleases[0]!.next;
+    markdown = formatLockstepChangelog(packageReleases, sharedVersion, locale);
+  } else {
+    // Step 8 (original): Load template and format each package separately
+    const templateName = changelogConfig?.template || 'corporate-ai';
+    onProgress?.(`Loading template "${templateName}"...`);
+    const template = await loadTemplate(templateName, repoRoot);
 
-    const templateData = packageToTemplateData(pkg, locale, changelogConfig?.metadata);
-    const result = template.render(templateData, platform);
-    const formatted = typeof result === 'string' ? result : await result;
+    const formattedPackages: string[] = [];
+    for (let i = 0; i < packageReleases.length; i++) {
+      const pkg = packageReleases[i];
+      if (!pkg) {continue;}
 
-    formattedPackages.push(formatted);
+      onProgress?.(`Formatting changelog for ${pkg.name} (${i + 1}/${packageReleases.length})...`);
+
+      const templateData = packageToTemplateData(pkg, locale, changelogConfig?.metadata);
+      const result = template.render(templateData, platform);
+      const formatted = typeof result === 'string' ? result : await result;
+
+      formattedPackages.push(formatted);
+    }
+
+    markdown = formattedPackages.join('\n\n');
   }
-
-  const markdown = formattedPackages.join('\n\n');
 
   return {
     markdown,
@@ -199,7 +242,28 @@ export function generateSimpleChangelog(
   packages: ChangelogPackageInfo[],
   locale: 'en' | 'ru' = 'en'
 ): string {
-  const date = new Date().toISOString().split('T')[0];
+  const date = new Date().toISOString().split('T')[0]!;
+
+  // Detect lockstep (all packages share same next version)
+  const uniqueVersions = new Set(packages.map(p => p.nextVersion));
+  const isLockstep = packages.length > 1 && uniqueVersions.size === 1;
+
+  if (isLockstep) {
+    const version = packages[0]!.nextVersion;
+    const title = locale === 'ru' ? 'Релиз' : 'Release';
+    const pkgWord = locale === 'ru' ? 'пакетов' : packages.length === 1 ? 'package' : 'packages';
+    const lines: string[] = [
+      `## [${version}] - ${date}`,
+      '',
+      `**${packages.length} ${pkgWord}** bumped to v${version}`,
+      '',
+      `| Package | Previous | Bump |`,
+      `|---------|----------|------|`,
+      ...packages.map(p => `| \`${p.name}\` | ${p.currentVersion} | ${p.bump} |`),
+    ];
+    return lines.join('\n');
+  }
+
   const title = locale === 'ru' ? 'Релиз' : 'Release';
   const lines: string[] = [`## [${date}] ${title}\n\n`];
 

@@ -98,15 +98,17 @@ export default defineHandler({
         // - package: package.json content (must have bundleDependencies if not isProjectRoot)
         // - isProjectRoot: true to use bundleDependencies instead of all deps
         // - edgesOut: Map of dependency edges (not needed if bundleDependencies is empty)
+        // npm-packlist v10+ reads tree.path and tree.package at runtime.
+        // @types/npm-packlist expects an arborist Node, but a plain object works fine —
+        // cast to avoid the type mismatch without installing the full @npmcli/arborist types.
         const tree = {
           path: packagePath,
           isProjectRoot: true,
           package: {
             ...pkgJson,
-            // Ensure bundleDependencies is defined to avoid gatherBundles error
             bundleDependencies: pkgJson.bundleDependencies || [],
           },
-        };
+        } as Parameters<typeof packlist>[0];
         const files = await packlist(tree);
 
         // Get file sizes

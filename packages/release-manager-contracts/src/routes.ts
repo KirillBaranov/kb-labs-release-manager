@@ -91,6 +91,12 @@ export const RELEASE_ROUTES = {
   // === Checklist ===
   /** GET /checklist - Get unified release checklist status */
   CHECKLIST: '/checklist',
+
+  // === Pre-release Checks ===
+  /** GET /checks - Get list of configured checks (without running them) */
+  CHECKS: '/checks',
+  /** POST /checks/run - Run pre-release checks from kb.config.json */
+  CHECKS_RUN: '/checks/run',
 } as const;
 
 /**
@@ -119,6 +125,8 @@ export const RELEASE_FULL_ROUTES = {
   GIT_TIMELINE: `${RELEASE_BASE_PATH}${RELEASE_ROUTES.GIT_TIMELINE}`,
   BUILD: `${RELEASE_BASE_PATH}${RELEASE_ROUTES.BUILD}`,
   CHECKLIST: `${RELEASE_BASE_PATH}${RELEASE_ROUTES.CHECKLIST}`,
+  CHECKS: `${RELEASE_BASE_PATH}${RELEASE_ROUTES.CHECKS}`,
+  CHECKS_RUN: `${RELEASE_BASE_PATH}${RELEASE_ROUTES.CHECKS_RUN}`,
 } as const;
 
 /**
@@ -147,6 +155,7 @@ export const RELEASE_WIDGET_ROUTES = {
   GIT_TIMELINE: 'git-timeline',
   BUILD: 'build',
   CHECKLIST: 'checklist',
+  CHECKS_RUN: 'checks/run',
 } as const;
 
 export type ReleaseRoute = typeof RELEASE_ROUTES[keyof typeof RELEASE_ROUTES];

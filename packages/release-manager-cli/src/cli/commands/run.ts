@@ -34,7 +34,6 @@ import {
 import { runChecks, type CheckConfig } from '@kb-labs/release-manager-checks';
 import { findRepoRoot } from '../../shared/utils';
 import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 // Input type combining flags with backward compatibility
 type RunInput = {

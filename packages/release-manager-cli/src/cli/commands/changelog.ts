@@ -16,7 +16,6 @@ import {
 } from '@kb-labs/release-manager-changelog';
 import { planRelease } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type ChangelogInput = {
   scope?: string;

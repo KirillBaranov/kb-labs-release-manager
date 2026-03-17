@@ -11,7 +11,6 @@
 
 import { defineCommand, type CommandResult, type PluginContextV3, useLoader, useConfig } from '@kb-labs/sdk';
 import { planRelease, type ReleaseConfig } from '@kb-labs/release-manager-core';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events.js';
 import { findRepoRoot } from '../../shared/utils';
 import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 

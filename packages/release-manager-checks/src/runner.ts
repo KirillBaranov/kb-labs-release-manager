@@ -74,7 +74,7 @@ export async function runChecks(
 
   if (options.parallel) {
     // Run all checks in parallel
-    return await Promise.all(checks.map((check) => runSingleCheck(check, options)));
+    return Promise.all(checks.map((check) => runSingleCheck(check, options)));
   } else {
     // Run checks sequentially
     const results: CheckResult[] = [];

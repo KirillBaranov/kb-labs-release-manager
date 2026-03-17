@@ -3,8 +3,6 @@
  * Single git log traversal with streaming parse
  */
 
-// @ts-expect-error - conventional-commits-parser has no types
-import conventionalParser from 'conventional-commits-parser';
 import simpleGit from 'simple-git';
 import type { Change, CommitType, BreakingChange, Reference, Author, ParseOptions } from './types';
 

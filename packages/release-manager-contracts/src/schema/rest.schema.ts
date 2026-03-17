@@ -106,6 +106,7 @@ export type PlanResponse = z.infer<typeof PlanResponseSchema>;
 
 export const GeneratePlanRequestSchema = z.object({
   scope: z.string(),
+  scopePath: z.string().optional(), // Absolute path to monorepo/package dir — takes priority over scope name for discovery
   bump: VersionBumpSchema.optional(),
   strict: z.boolean().optional(),
   useLLM: z.boolean().optional().default(true), // Use LLM for intelligent version bump analysis
@@ -535,7 +536,60 @@ export const ReleaseChecklistSchema = z.object({
     filesCount: z.number().int().min(0).optional(),
     totalSize: z.number().int().min(0).optional(),
   }),
+  npm: z.object({
+    status: ChecklistItemStatusSchema,
+    message: z.string(),
+  }),
   canPublish: z.boolean(),
 });
 
 export type ReleaseChecklist = z.infer<typeof ReleaseChecklistSchema>;
+
+// ============================================================================
+// Run Pre-release Checks
+// ============================================================================
+
+export const RunChecksRequestSchema = z.object({
+  scope: z.string(),
+});
+
+export type RunChecksRequest = z.infer<typeof RunChecksRequestSchema>;
+
+export const CheckResultItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  success: z.boolean(),
+  error: z.string().optional(),
+  durationMs: z.number().int().min(0),
+  optional: z.boolean().optional(),
+});
+
+export type CheckResultItem = z.infer<typeof CheckResultItemSchema>;
+
+export const RunChecksResponseSchema = z.object({
+  scope: z.string(),
+  success: z.boolean(),
+  checks: z.array(CheckResultItemSchema),
+  totalDurationMs: z.number().int().min(0),
+});
+
+export type RunChecksResponse = z.infer<typeof RunChecksResponseSchema>;
+
+// ============================================================================
+// Get Checks List (no execution)
+// ============================================================================
+
+export const CheckDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  optional: z.boolean().optional(),
+});
+
+export type CheckDefinition = z.infer<typeof CheckDefinitionSchema>;
+
+export const GetChecksResponseSchema = z.object({
+  scope: z.string(),
+  checks: z.array(CheckDefinitionSchema),
+});
+
+export type GetChecksResponse = z.infer<typeof GetChecksResponseSchema>;

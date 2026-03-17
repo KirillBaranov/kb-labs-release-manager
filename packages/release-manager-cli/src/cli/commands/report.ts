@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { defineCommand, type CommandResult, type PluginContextV3 } from '@kb-labs/sdk';
 import type { ReleaseReport } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 // Input type combining flags with backward compatibility
 type ReportInput = {

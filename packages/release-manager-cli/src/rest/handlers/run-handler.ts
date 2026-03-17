@@ -12,10 +12,11 @@ import type {
   ReleaseReport,
   ReleasePlan,
 } from '@kb-labs/release-manager-contracts';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { scopeToDir } from '../../shared/utils';
 import { join, isAbsolute } from 'node:path';
 import { publishPackagesProgrammatic } from '../../shared/publish-programmatic';
+import { commitAndTagRelease } from '@kb-labs/release-manager-core';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, RunReleaseRequest>): Promise<RunReleaseResponse> {
@@ -94,7 +95,25 @@ export default defineHandler({
         errors.push(...publishResult.errors);
       }
 
-      // 4. Create release report
+      // 5. Commit, tag and push (skip for dry-run, skip if publish failed)
+      let gitResult: { committed: boolean; tagged: string[]; pushed: boolean } = {
+        committed: false,
+        tagged: [],
+        pushed: false,
+      };
+
+      if (!dryRun && publishResult.failed.length === 0) {
+        try {
+          gitResult = await commitAndTagRelease({ cwd: repoRoot, plan, dryRun: false });
+          ctx.platform?.logger?.info?.(`Git: committed=${gitResult.committed}, tags=${gitResult.tagged.join(', ')}, pushed=${gitResult.pushed}`);
+        } catch (gitError) {
+          const msg = gitError instanceof Error ? gitError.message : String(gitError);
+          ctx.platform?.logger?.warn?.(`Git tag/push failed (non-fatal): ${msg}`);
+          errors.push(`Git tagging failed: ${msg}`);
+        }
+      }
+
+      // 6. Create release report
       const timestamp = new Date().toISOString();
       const releaseId = timestamp.replace(/[:.]/g, '-').replace('Z', '');
       const duration = Date.now() - startTime;
@@ -118,6 +137,7 @@ export default defineHandler({
           version: plan.packages[0]?.nextVersion,
           published,
           skipped: publishResult.skipped,
+          git: gitResult,
           timingMs: duration,
           errors: errors.length > 0 ? errors : undefined,
         },
@@ -143,6 +163,13 @@ export default defineHandler({
           await ctx.runtime.fs.writeFile(changelogHistoryPath, changelog, { encoding: 'utf-8' });
         } catch {
           // Changelog optional
+        }
+
+        // Clean up current plan after successful release
+        if (success) {
+          const currentPlanDir = join(repoRoot, '.kb/release/plans', scopeDir, 'current');
+          await rm(currentPlanDir, { recursive: true, force: true });
+          ctx.platform?.logger?.info?.('Cleaned up current plan after successful release');
         }
       }
 

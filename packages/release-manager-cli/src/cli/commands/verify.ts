@@ -7,7 +7,6 @@ import { defineCommand, type CommandResult, type PluginContextV3, useConfig } fr
 import { planRelease, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { resolveGitRange, parseCommits } from '@kb-labs/release-manager-changelog';
 import { findRepoRoot } from '../../shared/utils';
-import { ANALYTICS_EVENTS, ANALYTICS_ACTOR } from '../../infra/analytics/events';
 
 type VerifyInput = {
   scope?: string;

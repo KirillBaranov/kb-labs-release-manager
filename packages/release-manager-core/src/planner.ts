@@ -52,7 +52,8 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
   }
 
   // Apply versioning strategy (lockstep/independent/adaptive)
-  const bumpStrategy = config.changelog?.bumpStrategy || 'independent';
+  // Top-level versioningStrategy takes priority over legacy changelog.bumpStrategy
+  const bumpStrategy = config.versioningStrategy || config.changelog?.bumpStrategy || 'independent';
   const versionStrategy = mapBumpStrategyToVersionStrategy(bumpStrategy);
 
   planPackages = applyVersionStrategy(planPackages, {
@@ -72,10 +73,10 @@ export async function planRelease(options: PlannerOptions): Promise<ReleasePlan>
  * Map changelog.bumpStrategy to VersionStrategy
  */
 function mapBumpStrategyToVersionStrategy(
-  bumpStrategy: 'independent' | 'ripple' | 'lockstep'
+  bumpStrategy: 'independent' | 'ripple' | 'lockstep' | 'adaptive'
 ): VersionStrategy {
   if (bumpStrategy === 'lockstep') {return 'lockstep';}
-  if (bumpStrategy === 'ripple') {return 'adaptive';}
+  if (bumpStrategy === 'ripple' || bumpStrategy === 'adaptive') {return 'adaptive';}
   return 'independent';
 }
 
@@ -122,13 +123,16 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
     const packagePath = join(packageJsonPath, '..');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
 
-    // Skip root package.json (always)
-    if (packageJsonPath === join(cwd, 'package.json')) {
-      continue;
-    }
+    const isRootPackageJson = packageJsonPath === join(cwd, 'package.json');
 
     // Skip private packages (always)
     if (packageJson.private) {
+      continue;
+    }
+
+    // Skip root package.json unless it has a name and matches the scope.
+    // Root package.json without a name is just a monorepo workspace manifest.
+    if (isRootPackageJson && !packageJson.name) {
       continue;
     }
 
@@ -235,13 +239,11 @@ async function computeNextVersion(
   // If auto, detect from conventional commits
   if (bump === 'auto') {
     const detectedBump = await detectVersionFromCommits(git, packagePath);
-    const result = semver.inc(currentVersion, detectedBump) || currentVersion;
-    return result;
+    return semver.inc(currentVersion, detectedBump) || currentVersion;
   }
 
   // Manual bump
-  const result = semver.inc(currentVersion, bump) || currentVersion;
-  return result;
+  return semver.inc(currentVersion, bump) || currentVersion;
 }
 
 async function detectVersionFromCommits(

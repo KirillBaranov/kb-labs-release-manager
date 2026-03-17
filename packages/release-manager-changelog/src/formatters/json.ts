@@ -3,7 +3,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { ReleaseManifest, PackageRelease, Change } from '../types';
+import type { ReleaseManifest, PackageRelease } from '../types';
 
 /**
  * Format ReleaseManifest as JSON string with integrity hashes

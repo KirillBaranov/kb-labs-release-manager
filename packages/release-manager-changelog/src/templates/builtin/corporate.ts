@@ -8,7 +8,8 @@
  * - Scope-based organization
  */
 
-import type { ChangelogTemplate, TemplateData } from '../types';
+import type { TemplateData } from '../types';
+import type { Change } from '../../types';
 
 export const version = '1.0' as const;
 
@@ -16,11 +17,12 @@ export function render(data: TemplateData): string {
   const { package: pkg, breaking, changes, locale } = data;
   const lines: string[] = [];
 
-  // Header with version bump reason
+  // Header: standard OSS format  ## [version] - YYYY-MM-DD
+  const date = new Date().toISOString().split('T')[0]!;
   const reasonLabel = getReasonLabel(pkg.reason, locale);
-  lines.push(`## ${pkg.name} ${pkg.next}`);
+  lines.push(`## [${pkg.next}] - ${date}`);
   lines.push('');
-  lines.push(`**${pkg.prev} → ${pkg.next}** (${reasonLabel})`);
+  lines.push(`> **${pkg.name}** ${pkg.prev} → ${pkg.next} (${reasonLabel})`);
   lines.push('');
 
   // Breaking changes (critical section)
@@ -43,8 +45,7 @@ export function render(data: TemplateData): string {
     lines.push(`### ${featTitle}`);
     lines.push('');
     for (const feat of changes.feat) {
-      const scope = feat.scope ? `**${feat.scope}**` : 'general';
-      lines.push(`- ${scope}: ${feat.subject}`);
+      lines.push(formatChangeLine(feat));
     }
     lines.push('');
   }
@@ -55,8 +56,7 @@ export function render(data: TemplateData): string {
     lines.push(`### ${perfTitle}`);
     lines.push('');
     for (const perf of changes.perf) {
-      const scope = perf.scope ? `**${perf.scope}**` : 'general';
-      lines.push(`- ${scope}: ${perf.subject}`);
+      lines.push(formatChangeLine(perf));
     }
     lines.push('');
   }
@@ -67,37 +67,56 @@ export function render(data: TemplateData): string {
     lines.push(`### ${fixTitle}`);
     lines.push('');
     for (const fix of changes.fix) {
-      const scope = fix.scope ? `**${fix.scope}**` : 'general';
-      lines.push(`- ${scope}: ${fix.subject}`);
+      lines.push(formatChangeLine(fix));
     }
     lines.push('');
   }
 
-  // Refactoring
-  if (changes.refactor && changes.refactor.length > 0) {
-    const refactorTitle = locale === 'ru' ? '♻️ Рефакторинг' : '♻️ Code Refactoring';
-    lines.push(`### ${refactorTitle}`);
+  // Reverts — user-visible (something was undone)
+  if (changes.revert && changes.revert.length > 0) {
+    const revertTitle = locale === 'ru' ? '⏪ Откаты' : '⏪ Reverts';
+    lines.push(`### ${revertTitle}`);
     lines.push('');
-    for (const refactor of changes.refactor) {
-      const scope = refactor.scope ? `**${refactor.scope}**` : 'general';
-      lines.push(`- ${scope}: ${refactor.subject}`);
+    for (const revert of changes.revert) {
+      lines.push(formatChangeLine(revert));
     }
     lines.push('');
   }
 
-  // Documentation
-  if (changes.docs && changes.docs.length > 0) {
-    const docsTitle = locale === 'ru' ? '📝 Документация' : '📝 Documentation';
-    lines.push(`### ${docsTitle}`);
-    lines.push('');
-    for (const doc of changes.docs) {
-      const scope = doc.scope ? `**${doc.scope}**` : 'general';
-      lines.push(`- ${scope}: ${doc.subject}`);
-    }
-    lines.push('');
-  }
+  // chore / build / ci / test / style / refactor intentionally omitted:
+  // they are internal changes and not relevant to package consumers.
 
-  return lines.join('\n').trim();
+  return lines.join('\n').trimEnd();
+}
+
+/**
+ * Format a single change line with scope and optional issue/PR refs.
+ * Output: - **scope**: subject text (#123, #456)
+ */
+function formatChangeLine(change: Change): string {
+  const scope = change.scope ? `**${change.scope}**` : '';
+  const text = scope ? `${scope}: ${change.subject}` : change.subject;
+  const refs = formatRefs(change);
+  return refs ? `- ${text} (${refs})` : `- ${text}`;
+}
+
+/**
+ * Render issue/PR refs as comma-separated links or plain numbers.
+ * Uses providerLinks when available, otherwise falls back to #N notation.
+ */
+function formatRefs(change: Change): string {
+  if (!change.refs || change.refs.length === 0) { return ''; }
+
+  return change.refs
+    .map(ref => {
+      // Try to find a matching provider link for issues
+      const issueLink = change.providerLinks?.issues?.find(l => l.endsWith(`/${ref.id}`));
+      if (issueLink) { return `[#${ref.id}](${issueLink})`; }
+      const prLink = change.providerLinks?.pr?.find(l => l.endsWith(`/${ref.id}`));
+      if (prLink) { return `[#${ref.id}](${prLink})`; }
+      return `#${ref.id}`;
+    })
+    .join(', ');
 }
 
 function getReasonLabel(reason: string, locale: 'en' | 'ru'): string {

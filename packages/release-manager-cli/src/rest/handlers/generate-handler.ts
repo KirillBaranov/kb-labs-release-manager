@@ -4,7 +4,7 @@
  * Writes: .kb/release/plans/{scope}/current/plan.json
  */
 
-import { defineHandler, findRepoRoot, type RestInput, type PluginContextV3 } from '@kb-labs/sdk';
+import { defineHandler, findRepoRoot, type RestInput, type PluginContextV3, useConfig } from '@kb-labs/sdk';
 import type {
   GeneratePlanRequest,
   GeneratePlanResponse,
@@ -18,12 +18,21 @@ import { scopeToDir } from '../../shared/utils';
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, GeneratePlanRequest>): Promise<GeneratePlanResponse> {
     const scope = input.body?.scope || 'root';
+    const scopePath = input.body?.scopePath; // Absolute path — use as cwd for discovery
     const bump = input.body?.bump || 'auto';
     const useLLM = input.body?.useLLM ?? true;
     const cwd = ctx.cwd ?? process.cwd();
     const repoRoot = await findRepoRoot(cwd);
 
-    ctx.platform?.logger?.info?.('Generating release plan', { scope, bump, useLLM });
+    // If scopePath provided, use it as cwd for package discovery (no name filter)
+    // This guarantees correct discovery for monorepos regardless of package.json name
+    const planCwd = scopePath ?? repoRoot;
+    const planScope = scopePath ? undefined : scope;
+
+    ctx.platform?.logger?.info?.('Generating release plan', { scope, scopePath, planCwd, bump, useLLM });
+
+    // Read versioningStrategy from kb.config.json release section
+    const releaseConfig = await useConfig<ReleaseConfig>();
 
     // Create config for core planner
     const config: ReleaseConfig = {
@@ -31,13 +40,14 @@ export default defineHandler({
       strategy: 'semver',
       registry: 'https://registry.npmjs.org',
       rollback: { enabled: true },
+      versioningStrategy: releaseConfig?.versioningStrategy,
     };
 
     // Use core planner to discover packages and compute versions
     const corePlan = await planRelease({
-      cwd: repoRoot,
+      cwd: planCwd,
       config,
-      scope,
+      scope: planScope,
       bumpOverride: bump as VersionBump | undefined,
     });
 

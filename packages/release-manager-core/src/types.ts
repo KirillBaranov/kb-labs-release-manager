@@ -48,11 +48,20 @@ export type CheckId = string;
  */
 export interface CustomCheckConfig {
   id: string;
+  /** Human-readable name shown in UI. Falls back to id if not set. */
+  name?: string;
   command: string;
   args?: string[];
   parser?: 'json' | 'exitcode' | ((stdout: string, stderr: string, exitCode: number) => boolean);
   timeoutMs?: number;
   optional?: boolean;
+  /**
+   * Run this check once in a single directory instead of once per package.
+   * "repoRoot" — run in the git repo root (default for monorepo builds)
+   * "scopePath" — run in the scope directory (monorepo root like kb-labs-core/)
+   * If omitted, check runs in each package directory (original behaviour).
+   */
+  runIn?: 'repoRoot' | 'scopePath' | 'perPackage';
 }
 
 export interface ReleaseChecks {
@@ -99,6 +108,7 @@ export interface ReleaseConfig {
   registry?: string;
   strategy?: 'semver';
   bump?: VersionBump;
+  versioningStrategy?: 'lockstep' | 'independent' | 'adaptive';
   strict?: boolean;
   verify?: CheckId[];
   checks?: CustomCheckConfig[];

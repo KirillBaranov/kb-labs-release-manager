@@ -351,13 +351,14 @@ function createPackageChangelog(pkg: PackageVersion, changelog: string): string 
   }
 
   // Extract the section for this package
-  const packageSection = changelog.substring(startIdx, endIdx).trim();
-
-  return packageSection;
+  return changelog.substring(startIdx, endIdx).trim();
 }
 
 /**
  * Commit and tag release changes
+ *
+ * Each package is committed inside its own git repo (supports submodules).
+ * After all packages are committed, tags are created in cwd (the monorepo root).
  */
 export async function commitAndTagRelease(options: {
   cwd: string;
@@ -366,7 +367,6 @@ export async function commitAndTagRelease(options: {
 }): Promise<{ committed: boolean; tagged: string[]; pushed: boolean }> {
   const { cwd, plan, dryRun } = options;
   const simpleGit = (await import('simple-git')).default;
-  const git = simpleGit(cwd);
 
   const result = {
     committed: false,
@@ -379,46 +379,56 @@ export async function commitAndTagRelease(options: {
   }
 
   try {
-    // 1. Git add all changes
-    // Build list of files to add based on what exists
-    const filesToAdd: string[] = [];
+    const commitMessage = createCommitMessage(plan);
 
-    // Add package-specific files (relative to cwd which is the git repo root)
+    // 1. Commit each package in its own git repo
     for (const pkg of plan.packages) {
-      // Check if pkg.path is inside cwd or equals cwd
-      if (pkg.path === cwd) {
-        // Single package at git root (e.g., kb-labs-core)
-        filesToAdd.push('package.json');
-        filesToAdd.push('CHANGELOG.md');
-      } else if (pkg.path.startsWith(cwd + '/')) {
-        // Package is subdirectory of cwd
-        const relativePath = pkg.path.replace(cwd + '/', '');
-        filesToAdd.push(`${relativePath}/package.json`);
-        filesToAdd.push(`${relativePath}/CHANGELOG.md`);
-      } else {
-        // Package path doesn't match cwd - add absolute paths
-        filesToAdd.push(`${pkg.path}/package.json`);
-        filesToAdd.push(`${pkg.path}/CHANGELOG.md`);
+      const pkgGit = simpleGit(pkg.path);
+
+      // Stage package.json and CHANGELOG.md
+      await pkgGit.add(['package.json', 'CHANGELOG.md']);
+
+      try {
+        await pkgGit.commit(commitMessage);
+        result.committed = true;
+      } catch (commitError) {
+        const msg = commitError instanceof Error ? commitError.message : String(commitError);
+        if (!msg.includes('nothing to commit') && !msg.includes('nothing added to commit')) {
+          throw commitError;
+        }
       }
     }
 
-    await git.add(filesToAdd);
+    // 2. Create tags in cwd (monorepo root)
+    const git = simpleGit(cwd);
 
-    // 2. Create commit message
-    const commitMessage = createCommitMessage(plan);
-    await git.commit(commitMessage);
-    result.committed = true;
+    // Lockstep (all packages same version) → single repo-level tag: v{version}
+    // Independent → per-package tag: {name}@{version}
+    const uniqueVersions = new Set(plan.packages.map(p => p.nextVersion));
+    const isLockstep = plan.packages.length > 1 && uniqueVersions.size === 1;
 
-    // 3. Create tags for each package
-    for (const pkg of plan.packages) {
-      const tagName = `${pkg.name}@${pkg.nextVersion}`;
+    if (isLockstep) {
+      const version = plan.packages[0]!.nextVersion;
+      const tagName = `v${version}`;
       await git.addTag(tagName);
       result.tagged.push(tagName);
+    } else {
+      for (const pkg of plan.packages) {
+        const pkgGit = simpleGit(pkg.path);
+        const tagName = `${pkg.name}@${pkg.nextVersion}`;
+        await pkgGit.addTag(tagName);
+        result.tagged.push(tagName);
+      }
     }
 
-    // 4. Push commits and tags
-    await git.push();
-    await git.pushTags();
+    // 3. Push each package repo
+    for (const pkg of plan.packages) {
+      const pkgGit = simpleGit(pkg.path);
+      if (result.committed) {
+        await pkgGit.push(['--no-verify']);
+      }
+      await pkgGit.pushTags('--no-verify');
+    }
     result.pushed = true;
 
   } catch (error) {
