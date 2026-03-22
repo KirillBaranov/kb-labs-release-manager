@@ -38,11 +38,11 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
-    "@kb-labs/plugin-contracts": "workspace:*",
+    "@kb-labs/plugin-contracts": "link:../../../../infra/kb-labs-plugin/packages/plugin-contracts",
     "@kb-labs/release-manager-core": "link:../release-manager-core"
   },
   "devDependencies": {
-    "@kb-labs/devkit": "workspace:*",
+    "@kb-labs/devkit": "link:../../../../infra/kb-labs-devkit",
     "@types/fs-extra": "^11.0.0",
     "@types/node": "^24.3.3",
     "rimraf": "^6.0.1",

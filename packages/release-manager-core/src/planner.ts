@@ -3,10 +3,12 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import semver from 'semver';
 import globby from 'globby';
+import { discoverSubRepoPaths } from '@kb-labs/sdk';
 import type { PackageVersion, VersionBump, ReleaseConfig, ReleasePlan } from './types';
 import { applyVersionStrategy, type VersionStrategy } from './versioning-strategies';
 
@@ -23,19 +25,31 @@ export interface PlannerOptions {
 export async function planRelease(options: PlannerOptions): Promise<ReleasePlan> {
   const { cwd, config, scope, bumpOverride } = options;
 
-
   // Discover packages
   const packages = await discoverPackages(cwd, scope, config);
 
-  // Detect modified packages - with timeout to prevent hanging
-  const git = simpleGit(cwd, { timeout: { block: 60000 } }); // 60 second timeout for large repos
+  // Workspace root with submodules: each sub-repo has its own git,
+  // so we skip workspace-level detectModifiedPackages and use per-repo git.
+  const isWorkspaceRoot = existsSync(join(cwd, '.gitmodules')) && !scope;
 
-  const modifiedPackages = await detectModifiedPackages(git, packages);
+  let modifiedPackages: PackageVersion[];
+  if (isWorkspaceRoot) {
+    // All sub-repos are candidates — change detection happens per-repo
+    modifiedPackages = packages;
+  } else {
+    const git = simpleGit(cwd, { timeout: { block: 60000 } });
+    modifiedPackages = await detectModifiedPackages(git, packages);
+  }
 
   // Compute version bumps
   let planPackages: PackageVersion[] = [];
   for (const pkg of modifiedPackages) {
     const bump = bumpOverride || config.bump || 'auto';
+
+    // For workspace root, use per-sub-repo git instance
+    const git = isWorkspaceRoot
+      ? simpleGit(pkg.path, { timeout: { block: 60000 } })
+      : simpleGit(cwd, { timeout: { block: 60000 } });
 
     const nextVersion = await computeNextVersion(
       pkg.path,
@@ -81,10 +95,13 @@ function mapBumpStrategyToVersionStrategy(
 }
 
 async function discoverPackages(cwd: string, scope?: string, config?: ReleaseConfig): Promise<PackageVersion[]> {
-  const packages: PackageVersion[] = [];
+  // If cwd is the workspace root (has .gitmodules), discover sub-repos as release units
+  const isWorkspaceRoot = existsSync(join(cwd, '.gitmodules'));
+  if (isWorkspaceRoot && !scope) {
+    return discoverSubRepoPackages(cwd);
+  }
 
-  // Use provided config or empty object
-  const releaseConfig = config || {};
+  const packages: PackageVersion[] = [];
 
   // Determine scope type:
   // 1. Exact package name: @kb-labs/core, my-package
@@ -94,9 +111,7 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
   const isWildcardPattern = scope && scope.includes('*');
 
   // Find package.json files - support nested monorepos
-  // For wildcard patterns with package names (like @kb-labs/core-*), we need to find all packages first
-  // then filter by name regex, because glob patterns work on file paths, not package names
-  const pattern = '**/package.json'; // Default pattern - config customization not yet implemented
+  const pattern = '**/package.json';
 
   const packageJsonPaths = await globby(pattern, {
     cwd,
@@ -107,12 +122,11 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
       '**/dist/**',
       '**/build/**',
       '**/.git/**',
-      '**/.*/**', // hidden folders
+      '**/.*/**',
     ],
   });
 
   for (let i = 0; i < packageJsonPaths.length; i++) {
-    // Освобождаем event loop каждые 10 файлов, чтобы спиннер мог обновиться
     if (i % 10 === 0) {
       await new Promise((resolve) => {
         setImmediate(resolve);
@@ -130,8 +144,13 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
       continue;
     }
 
-    // Skip root package.json unless it has a name and matches the scope.
-    // Root package.json without a name is just a monorepo workspace manifest.
+    // Skip monorepo root package.json — it's a workspace manifest, not a buildable package.
+    // The actual buildable packages are inside packages/ or apps/.
+    if (isRootPackageJson && existsSync(join(packagePath, 'pnpm-workspace.yaml'))) {
+      continue;
+    }
+
+    // Skip root package.json without name (workspace-only manifest)
     if (isRootPackageJson && !packageJson.name) {
       continue;
     }
@@ -143,11 +162,9 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
 
     // If scope is wildcard pattern, filter by glob match
     if (isWildcardPattern && scope) {
-      // Convert package name to match pattern (e.g., @kb-labs/core-sys matches @kb-labs/core-*)
-      // Escape regex special chars except *, then convert * to .*
       const scopePattern = scope
-        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')  // Escape special chars
-        .replace(/\*/g, '.*');                    // Convert * to .*
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
       const regex = new RegExp(`^${scopePattern}$`);
       if (!regex.test(packageJson.name)) {
         continue;
@@ -160,8 +177,39 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
       currentVersion: packageJson.version,
       nextVersion: packageJson.version,
       bump: 'auto',
-      isPublished: false, // Will be set to true after actual publish
+      isPublished: false,
     });
+  }
+
+  return packages;
+}
+
+/**
+ * Discover sub-repos as release units via .gitmodules.
+ * Each sub-repo root package.json is a release unit (even if private).
+ */
+async function discoverSubRepoPackages(workspaceRoot: string): Promise<PackageVersion[]> {
+  const subRepoPaths = discoverSubRepoPaths(workspaceRoot);
+  const packages: PackageVersion[] = [];
+
+  for (const subRepoPath of subRepoPaths) {
+    try {
+      const pkgJson = JSON.parse(
+        await readFile(join(subRepoPath, 'package.json'), 'utf-8')
+      );
+      if (!pkgJson.name) {continue;}
+
+      packages.push({
+        name: pkgJson.name,
+        path: subRepoPath,
+        currentVersion: pkgJson.version || '0.0.0',
+        nextVersion: pkgJson.version || '0.0.0',
+        bump: 'auto',
+        isPublished: false,
+      });
+    } catch {
+      // Sub-repo without valid package.json — skip
+    }
   }
 
   return packages;

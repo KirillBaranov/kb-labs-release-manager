@@ -4,10 +4,10 @@
     "baseUrl": ".",
     "paths": {
       "@kb-labs/plugin-contracts": [
-        "../kb-labs-plugin/packages/plugin-contracts/src/index.ts"
+        "../../infra/kb-labs-plugin/packages/plugin-contracts/src/index.ts"
       ],
       "@kb-labs/plugin-contracts/*": [
-        "../kb-labs-plugin/packages/plugin-contracts/src/*"
+        "../../infra/kb-labs-plugin/packages/plugin-contracts/src/*"
       ],
       "@kb-labs/release-manager-changelog": [
         "packages/release-manager-changelog/src/index.ts"
@@ -34,10 +34,10 @@
         "packages/release-manager-core/src/*"
       ],
       "@kb-labs/sdk": [
-        "../kb-labs-sdk/packages/sdk/src/index.ts"
+        "../../platform/kb-labs-sdk/packages/sdk/src/index.ts"
       ],
       "@kb-labs/sdk/*": [
-        "../kb-labs-sdk/packages/sdk/src/*"
+        "../../platform/kb-labs-sdk/packages/sdk/src/*"
       ]
     }
   }

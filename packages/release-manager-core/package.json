@@ -38,14 +38,14 @@
     "test:watch": "vitest -c ../../vitest.config.ts"
   },
   "dependencies": {
-    "@kb-labs/sdk": "workspace:*",
+    "@kb-labs/sdk": "link:../../../../platform/kb-labs-sdk/packages/sdk",
     "execa": "^8.0.0",
     "globby": "^11.0.0",
     "semver": "^7.6.3",
     "simple-git": "^3.25.0"
   },
   "devDependencies": {
-    "@kb-labs/devkit": "workspace:*",
+    "@kb-labs/devkit": "link:../../../../infra/kb-labs-devkit",
     "@types/fs-extra": "^11.0.0",
     "@types/node": "^24.3.3",
     "@types/semver": "^7.5.8",

@@ -10,74 +10,47 @@ import type { RunChecksRequest, RunChecksResponse, CheckResultItem } from '@kb-l
 import type { ReleaseConfig, CustomCheckConfig } from '@kb-labs/release-manager-core';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
 import { scopeToDir } from '../../shared/utils.js';
+import { runSafeBuild, isBuildCommand, spawnCommand } from '../../shared/safe-build.js';
 
 async function runCheck(
   check: CustomCheckConfig,
   cwd: string,
+  repoRoot: string,
 ): Promise<CheckResultItem> {
   const startTime = Date.now();
 
-  return new Promise((resolve) => {
-    // Join command + args into a single string for shell: true
-    // (on macOS/Linux, spawn with shell:true expects a string command)
-    const fullCommand = [check.command, ...(check.args ?? [])].join(' ');
-    const child = spawn(fullCommand, [], {
-      cwd,
-      stdio: 'pipe',
-      shell: true,
-      env: { ...process.env },
-    });
+  // If this check runs a build command, use safe build to avoid crashing running services
+  if (isBuildCommand(check.command, check.args)) {
+    const result = await runSafeBuild(cwd, check.id);
+    return {
+      id: check.id,
+      name: check.name ?? check.id,
+      success: result.success,
+      error: result.error,
+      durationMs: result.durationMs,
+      optional: check.optional,
+    };
+  }
 
-    let stderr = '';
-    let stdout = '';
+  // Resolve script paths in args relative to repo root
+  // (checks run perPackage with cwd=packagePath, but scripts live in repo root)
+  const resolvedArgs = (check.args ?? []).map(arg =>
+    arg.match(/\.(sh|js|ts|mjs|cjs)$/) ? join(repoRoot, arg) : arg
+  );
 
-    child.stdout?.on('data', (data) => { stdout += data.toString(); });
-    child.stderr?.on('data', (data) => { stderr += data.toString(); });
+  const fullCommand = [check.command, ...resolvedArgs].join(' ');
+  const timeoutMs = check.timeoutMs ?? 120000;
+  const result = await spawnCommand(fullCommand, cwd, timeoutMs);
 
-    const timeoutMs = check.timeoutMs ?? 120000;
-    const timer = setTimeout(() => {
-      child.kill();
-      resolve({
-        id: check.id,
-        name: check.name ?? check.id,
-        success: false,
-        error: `Timed out after ${timeoutMs / 1000}s`,
-        durationMs: Date.now() - startTime,
-        optional: check.optional,
-      });
-    }, timeoutMs);
-
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      const durationMs = Date.now() - startTime;
-      if (code === 0) {
-        resolve({ id: check.id, name: check.name ?? check.id, success: true, durationMs, optional: check.optional });
-      } else {
-        resolve({
-          id: check.id,
-          name: check.name ?? check.id,
-          success: false,
-          error: stderr || stdout || `Exited with code ${code}`,
-          durationMs,
-          optional: check.optional,
-        });
-      }
-    });
-
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({
-        id: check.id,
-        name: check.name ?? check.id,
-        success: false,
-        error: err.message,
-        durationMs: Date.now() - startTime,
-        optional: check.optional,
-      });
-    });
-  });
+  return {
+    id: check.id,
+    name: check.name ?? check.id,
+    success: result.success,
+    error: result.error,
+    durationMs: result.durationMs,
+    optional: check.optional,
+  };
 }
 
 export default defineHandler({
@@ -148,7 +121,7 @@ export default defineHandler({
 
       for (const pkgPath of pathsToRun) {
         ctx.platform?.logger?.info?.(`Running check: ${check.id} in ${pkgPath}`, { command: check.command, args: check.args });
-        const result = await runCheck(check, pkgPath);
+        const result = await runCheck(check, pkgPath, repoRoot);
         totalDurationMs += result.durationMs;
 
         if (!result.success) {

@@ -42,14 +42,14 @@
     "@kb-labs/release-manager-checks": "link:../release-manager-checks",
     "@kb-labs/release-manager-contracts": "workspace:*",
     "@kb-labs/release-manager-core": "link:../release-manager-core",
-    "@kb-labs/sdk": "workspace:*",
+    "@kb-labs/sdk": "link:../../../../platform/kb-labs-sdk/packages/sdk",
     "glob": "^11.0.0",
     "globby": "^11.0.0",
     "npm-packlist": "^10.0.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@kb-labs/devkit": "workspace:*",
+    "@kb-labs/devkit": "link:../../../../infra/kb-labs-devkit",
     "@types/node": "^24.3.3",
     "@types/npm-packlist": "^7.0.3",
     "rimraf": "^6.0.1",

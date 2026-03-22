@@ -5,11 +5,10 @@
  * Analogous to commit-plugin scopes
  */
 
-import { defineHandler, findRepoRoot } from '@kb-labs/sdk';
+import { defineHandler, findRepoRoot, discoverSubRepoPaths } from '@kb-labs/sdk';
 import type { ScopesResponse, ReleaseScopeInfo } from '@kb-labs/release-manager-contracts';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { glob } from 'glob';
 
 export default defineHandler({
   async execute(ctx): Promise<ScopesResponse> {
@@ -36,41 +35,32 @@ export default defineHandler({
       // No package.json at root - skip root scope
     }
 
-    // 2. Find all top-level packages in workspace (kb-labs-*/package.json)
-    const packageJsonFiles = await glob('*/package.json', {
-      cwd: repoRoot,
-      ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
-      absolute: true,
-    });
+    // 2. Discover sub-repos via .gitmodules (works with nested layout)
+    const subRepoPaths = discoverSubRepoPaths(repoRoot);
 
-    for (const pkgPath of packageJsonFiles) {
-      if (pkgPath === join(repoRoot, 'package.json')) {
-        continue; // Skip root (already added)
-      }
+    for (const subRepoPath of subRepoPaths) {
+      const pkgPath = join(subRepoPath, 'package.json');
 
       try {
         const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
 
-        if (!pkg.name) {continue;} // Skip packages without name
-        if (pkg.private === true) {continue;} // Skip private packages
-
-        const pkgDir = join(pkgPath, '..');
+        if (!pkg.name) {continue;}
 
         // Check if it's a monorepo (has pnpm-workspace.yaml or lerna.json)
         const isMonorepo =
-          (await fileExists(join(pkgDir, 'pnpm-workspace.yaml'))) ||
-          (await fileExists(join(pkgDir, 'lerna.json')));
+          (await fileExists(join(subRepoPath, 'pnpm-workspace.yaml'))) ||
+          (await fileExists(join(subRepoPath, 'lerna.json')));
 
         scopes.push({
           id: pkg.name,
           name: pkg.displayName || pkg.name,
-          path: pkgDir,
+          path: subRepoPath,
           currentVersion: pkg.version,
           description: pkg.description,
           type: isMonorepo ? 'monorepo' : 'package',
         });
       } catch {
-        // Skip invalid package.json
+        // Skip sub-repos without valid package.json
       }
     }
 

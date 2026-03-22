@@ -1,7 +1,7 @@
 /**
  * Build handler - Trigger package build before publish
  *
- * Runs pnpm build for the specified scope
+ * Uses safe build (temp dir → atomic swap) to prevent crashing running services.
  */
 
 import { defineHandler, findRepoRoot, type RestInput } from '@kb-labs/sdk';
@@ -11,66 +11,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { scopeToDir } from '../../shared/utils';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
-
-/**
- * Run build command for a package
- */
-async function runBuild(packagePath: string, packageName: string): Promise<{
-  success: boolean;
-  error?: string;
-  durationMs: number;
-}> {
-  const startTime = Date.now();
-
-  return new Promise((resolve) => {
-    const child = spawn('pnpm run build', [], {
-      cwd: packagePath,
-      stdio: 'pipe',
-      shell: true,
-      env: { ...process.env },
-    });
-
-    let stderr = '';
-
-    child.stderr?.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-      const durationMs = Date.now() - startTime;
-      if (code === 0) {
-        resolve({ success: true, durationMs });
-      } else {
-        resolve({
-          success: false,
-          error: stderr || `Build failed with exit code ${code}`,
-          durationMs,
-        });
-      }
-    });
-
-    child.on('error', (err) => {
-      const durationMs = Date.now() - startTime;
-      resolve({
-        success: false,
-        error: err.message,
-        durationMs,
-      });
-    });
-
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      child.kill();
-      const durationMs = Date.now() - startTime;
-      resolve({
-        success: false,
-        error: 'Build timed out after 5 minutes',
-        durationMs,
-      });
-    }, 5 * 60 * 1000);
-  });
-}
+import { runSafeBuild } from '../../shared/safe-build';
 
 /**
  * Copy changelog to package root and dist/ after successful build
@@ -136,7 +77,7 @@ export default defineHandler({
 
       ctx.platform?.logger?.info?.(`Building ${pkg.name}...`, { packagePath });
 
-      const result = await runBuild(packagePath, pkg.name);
+      const result = await runSafeBuild(packagePath, pkg.name, ctx.platform?.logger);
       results.push({
         name: pkg.name,
         success: result.success,
