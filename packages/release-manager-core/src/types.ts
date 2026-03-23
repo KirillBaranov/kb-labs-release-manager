@@ -166,3 +166,73 @@ export interface AuditSummary {
   overall?: { ok: boolean; failReasons: string[] };
 }
 
+// ─── Pipeline interfaces ─────────────────────────────────────────────────────
+
+export interface BuildResult {
+  name: string;
+  success: boolean;
+  error?: string;
+  durationMs: number;
+}
+
+export interface VerifyResult {
+  name: string;
+  success: boolean;
+  issues: string[];
+}
+
+export interface PublishablePackage {
+  name: string;
+  version: string;
+  path: string;
+}
+
+export interface PublishResult {
+  published: string[];
+  skipped: string[];
+  errors: string[];
+}
+
+/** Injected by CLI (OTP) or REST (token-based) */
+export interface PackagePublisher {
+  publish(packages: PublishablePackage[], options: { dryRun?: boolean; access?: string }): Promise<PublishResult>;
+}
+
+/** Injected by caller — generates changelog */
+export interface ChangelogGenerator {
+  generate(plan: ReleasePlan, options: {
+    repoRoot: string;
+    gitCwd: string;
+    config: ReleaseConfig;
+  }): Promise<string>;
+}
+
+export interface PipelineOptions {
+  cwd: string;
+  repoRoot: string;
+  scope?: string;
+  config: ReleaseConfig;
+  dryRun?: boolean;
+  skipChecks?: boolean;
+  skipBuild?: boolean;
+  skipVerify?: boolean;
+
+  /** Custom check configs from kb.config.json */
+  checks?: CustomCheckConfig[];
+
+  /** Injected publisher (CLI = interactive OTP, REST = programmatic token) */
+  publisher: PackagePublisher;
+
+  /** Injected changelog generator (with or without LLM) */
+  changelog?: ChangelogGenerator;
+
+  logger?: { info?: (...args: any[]) => void; warn?: (...args: any[]) => void; error?: (...args: any[]) => void };
+  onProgress?: (stage: ReleaseStage, message: string) => void;
+}
+
+export interface PipelineResult {
+  success: boolean;
+  report: ReleaseReport;
+  plan: ReleasePlan;
+}
+

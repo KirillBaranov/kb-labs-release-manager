@@ -1,38 +1,14 @@
 /**
- * Build handler - Trigger package build before publish
- *
- * Uses safe build (temp dir → atomic swap) to prevent crashing running services.
+ * Build handler — thin adapter over core buildPackages().
  */
 
 import { defineHandler, findRepoRoot, type RestInput } from '@kb-labs/sdk';
-import type { ILogger } from '@kb-labs/sdk';
 import type { BuildRequest, BuildResponse } from '@kb-labs/release-manager-contracts';
+import { buildPackages } from '@kb-labs/release-manager-core';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { scopeToDir } from '../../shared/utils';
 import { join } from 'node:path';
-import { runSafeBuild } from '../../shared/safe-build';
-
-/**
- * Copy changelog to package root and dist/ after successful build
- */
-async function copyChangelogToPackage(
-  packagePath: string,
-  changelogContent: string,
-  logger?: ILogger,
-): Promise<void> {
-  const rootTarget = join(packagePath, 'CHANGELOG.md');
-  await writeFile(rootTarget, changelogContent, 'utf-8');
-  logger?.info?.(`Copied CHANGELOG.md to ${rootTarget}`);
-
-  const distDir = join(packagePath, 'dist');
-  if (!existsSync(distDir)) {
-    await mkdir(distDir, { recursive: true });
-  }
-  const distTarget = join(distDir, 'CHANGELOG.md');
-  await writeFile(distTarget, changelogContent, 'utf-8');
-  logger?.info?.(`Copied CHANGELOG.md to ${distTarget}`);
-}
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, BuildRequest>): Promise<BuildResponse> {
@@ -41,79 +17,47 @@ export default defineHandler({
     const repoRoot = await findRepoRoot(cwd);
     const startTime = Date.now();
 
-    // Read plan to get packages
+    // Read plan
     const scopeDir = scopeToDir(scope);
     const planPath = join(repoRoot, '.kb/release/plans', scopeDir, 'current', 'plan.json');
 
-    let plan: { packages: Array<{ name: string; path: string }> };
+    let plan: { packages: Array<{ name: string; path: string; currentVersion: string; nextVersion: string; bump: any }> };
     try {
-      const planRaw = await readFile(planPath, 'utf-8');
-      plan = JSON.parse(planRaw);
+      plan = JSON.parse(await readFile(planPath, 'utf-8'));
     } catch {
-      return {
-        scope,
-        success: false,
-        packages: [],
-        builtCount: 0,
-        totalCount: 0,
-        totalDurationMs: Date.now() - startTime,
-      };
+      return { scope, success: false, packages: [], builtCount: 0, totalCount: 0, totalDurationMs: Date.now() - startTime };
     }
 
-    // Read changelog once (non-fatal if missing)
+    // Build via core
+    const results = await buildPackages(plan.packages as any, { logger: ctx.platform?.logger });
+
+    // Copy changelog if exists
     const changelogPath = join(repoRoot, '.kb/release/plans', scopeDir, 'current', 'changelog.md');
     let changelogContent: string | undefined;
-    try {
-      changelogContent = await readFile(changelogPath, 'utf-8');
-    } catch {
-      ctx.platform?.logger?.warn?.('No changelog.md found, skipping CHANGELOG.md copy');
-    }
+    try { changelogContent = await readFile(changelogPath, 'utf-8'); } catch { /* skip */ }
 
-    const results: BuildResponse['packages'] = [];
-    let allSuccess = true;
-
-    for (const pkg of plan.packages) {
-      const packagePath = pkg.path.startsWith('/') ? pkg.path : join(repoRoot, pkg.path);
-
-      ctx.platform?.logger?.info?.(`Building ${pkg.name}...`, { packagePath });
-
-      const result = await runSafeBuild(packagePath, pkg.name, ctx.platform?.logger);
-      results.push({
-        name: pkg.name,
-        success: result.success,
-        error: result.error,
-        durationMs: result.durationMs,
-      });
-
-      if (!result.success) {
-        allSuccess = false;
-        ctx.platform?.logger?.error?.(`Build failed for ${pkg.name}`, undefined, { error: result.error });
-        // Stop on first failure
-        break;
-      }
-
-      ctx.platform?.logger?.info?.(`Built ${pkg.name} in ${result.durationMs}ms`);
-
-      if (changelogContent) {
+    if (changelogContent) {
+      for (const r of results) {
+        if (!r.success) break;
+        const pkg = plan.packages.find(p => p.name === r.name);
+        if (!pkg) continue;
+        const pkgPath = pkg.path.startsWith('/') ? pkg.path : join(repoRoot, pkg.path);
         try {
-          await copyChangelogToPackage(packagePath, changelogContent, ctx.platform?.logger);
-        } catch (err) {
-          ctx.platform?.logger?.warn?.(
-            `Failed to copy changelog for ${pkg.name}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
+          await writeFile(join(pkgPath, 'CHANGELOG.md'), changelogContent, 'utf-8');
+          const distDir = join(pkgPath, 'dist');
+          if (!existsSync(distDir)) await mkdir(distDir, { recursive: true });
+          await writeFile(join(distDir, 'CHANGELOG.md'), changelogContent, 'utf-8');
+        } catch { /* skip */ }
       }
     }
 
-    const builtCount = results.filter((r) => r.success).length;
-    const totalCount = plan.packages.length;
-
+    const builtCount = results.filter(r => r.success).length;
     return {
       scope,
-      success: allSuccess,
-      packages: results,
+      success: results.every(r => r.success),
+      packages: results.map(r => ({ name: r.name, success: r.success, error: r.error, durationMs: r.durationMs })),
       builtCount,
-      totalCount,
+      totalCount: plan.packages.length,
       totalDurationMs: Date.now() - startTime,
     };
   },
