@@ -10,7 +10,7 @@
  */
 
 import { defineCommand, type CommandResult, type PluginContextV3, useLoader, useConfig } from '@kb-labs/sdk';
-import { planRelease, type ReleaseConfig } from '@kb-labs/release-manager-core';
+import { planRelease, buildPackages, verifyPackages, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 
@@ -78,7 +78,6 @@ export default defineCommand({
       discoveryLoader.succeed(`Found ${packages.length} package(s)`);
 
       if (packages.length === 0) {
-        // Platform services with optional chaining
         ctx.platform?.logger?.warn?.('No packages found to publish', { scope });
         if (json) {
           ctx.ui?.json?.({ exitCode: 1, meta: { error: 'No packages found to publish' } });
@@ -88,11 +87,30 @@ export default defineCommand({
         return { exitCode: 1, meta: { error: 'No packages found to publish' } };
       }
 
-      // Platform services with optional chaining
-      ctx.platform?.logger?.info?.('Found packages to publish', {
-        count: packages.length,
-        packages: packages.map((p) => `${p.name}@${p.version}`),
-      });
+      // Build packages before publish (safe build — won't crash running services)
+      const buildLoader = useLoader(`Building ${packages.length} package(s)...`);
+      buildLoader.start();
+      const buildResults = await buildPackages(plan.packages, { logger: ctx.platform?.logger });
+      const buildFailed = buildResults.filter(r => !r.success);
+      if (buildFailed.length > 0) {
+        buildLoader.fail(`Build failed for ${buildFailed.map(r => r.name).join(', ')}`);
+        return { exitCode: 1, meta: { error: `Build failed: ${buildFailed[0]?.error}` } };
+      }
+      buildLoader.succeed(`Built ${buildResults.length} package(s)`);
+
+      // Verify packages (npm pack + import check)
+      const verifyLoader = useLoader('Verifying package artifacts...');
+      verifyLoader.start();
+      const verifyResults = await verifyPackages(plan.packages);
+      const verifyFailed = verifyResults.filter(r => !r.success);
+      if (verifyFailed.length > 0) {
+        verifyLoader.fail(`Verification failed`);
+        for (const f of verifyFailed) {
+          ctx.ui?.write?.(`  ${f.name}: ${f.issues.join(', ')}`);
+        }
+        return { exitCode: 1, meta: { error: `Verify failed: ${verifyFailed[0]?.issues[0]}` } };
+      }
+      verifyLoader.succeed('All packages verified');
 
       // Publish packages with interactive OTP support
       const result = await publishPackagesWithOTP({
