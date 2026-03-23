@@ -4,7 +4,7 @@
  */
 
 import { defineCommand, type CommandResult, type PluginContextV3, useConfig } from '@kb-labs/sdk';
-import { planRelease, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
+import { planRelease, verifyPackages, runReleaseChecks, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { resolveGitRange, parseCommits } from '@kb-labs/release-manager-changelog';
 import { findRepoRoot } from '../../shared/utils';
 
@@ -97,6 +97,35 @@ export default defineCommand({
         if (!hasAllowedTypes) {
           isValid = false;
           issues.push(`Required types not found: ${allowedTypes.join(', ')}`);
+        }
+      }
+
+      // Run pre-release checks if configured
+      if (config.checks && config.checks.length > 0 && hasPackages) {
+        const packagePaths = plan.packages.map(p => p.path);
+        const checkResults = await runReleaseChecks(config.checks, {
+          repoRoot,
+          packagePaths,
+          logger: ctx.platform?.logger,
+        });
+        const failedChecks = checkResults.filter(r => !r.ok && r.hint !== 'optional');
+        if (failedChecks.length > 0) {
+          isValid = false;
+          for (const f of failedChecks) {
+            issues.push(`Check "${f.id}" failed${f.details && typeof f.details === 'object' && 'error' in f.details ? ': ' + (f.details as any).error : ''}`);
+          }
+        }
+      }
+
+      // Verify package artifacts (pack + import check)
+      if (hasPackages) {
+        const verifyResults = await verifyPackages(plan.packages);
+        const verifyFailed = verifyResults.filter(r => !r.success);
+        if (verifyFailed.length > 0) {
+          isValid = false;
+          for (const f of verifyFailed) {
+            issues.push(...f.issues.map(i => `${f.name}: ${i}`));
+          }
         }
       }
 
