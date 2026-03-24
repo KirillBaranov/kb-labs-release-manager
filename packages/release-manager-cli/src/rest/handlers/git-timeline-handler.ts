@@ -11,8 +11,8 @@ import type {
   GitTimelineInput,
 } from '@kb-labs/release-manager-contracts';
 import { readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
-import globby from 'globby';
+import { join } from 'node:path';
+import { resolveScopePath } from '../../shared/utils';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<GitTimelineInput>): Promise<GitTimelineResponse> {
@@ -234,72 +234,3 @@ function bumpVersion(version: string, bump: 'major' | 'minor' | 'patch'): string
   }
 }
 
-/**
- * Resolve scope to absolute path
- * Handles package names (@kb-labs/mind → kb-labs-mind/) and root scope
- */
-async function resolveScopePath(repoRoot: string, scope: string): Promise<string> {
-  // Root scope - return repo root
-  if (scope === 'root') {
-    return repoRoot;
-  }
-
-  // Package name scope - discover packages and find match
-  if (scope.startsWith('@')) {
-    const packages = await discoverPackages(repoRoot);
-    const matched = packages.find((pkg) => pkg.name === scope);
-
-    if (matched) {
-      return join(repoRoot, matched.path);
-    }
-
-    // Fallback: if not found, try legacy conversion
-    return join(repoRoot, scope.replace('@kb-labs/', 'kb-labs-'));
-  }
-
-  // Direct path - resolve relative to repo root
-  return join(repoRoot, scope);
-}
-
-/**
- * Discover all packages in workspace
- */
-async function discoverPackages(cwd: string): Promise<Array<{ name: string; path: string }>> {
-  const packages: Array<{ name: string; path: string }> = [];
-
-  // Find all package.json files
-  const packageJsonPaths = await globby('**/package.json', {
-    cwd,
-    absolute: true,
-    onlyFiles: true,
-    ignore: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/build/**',
-      '**/.git/**',
-      '**/.*/**',
-    ],
-  });
-
-  for (const packageJsonPath of packageJsonPaths) {
-    try {
-      const packagePath = join(packageJsonPath, '..');
-      const content = await readFile(packageJsonPath, 'utf-8');
-      const packageJson = JSON.parse(content);
-
-      // Skip packages without name
-      if (!packageJson.name) {
-        continue;
-      }
-
-      packages.push({
-        name: packageJson.name,
-        path: relative(cwd, packagePath) || '.',
-      });
-    } catch {
-      // Skip invalid package.json
-    }
-  }
-
-  return packages;
-}

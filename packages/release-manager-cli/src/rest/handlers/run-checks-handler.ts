@@ -7,13 +7,14 @@ import type { RunChecksRequest, RunChecksResponse, CheckResultItem } from '@kb-l
 import { runReleaseChecks, type ReleaseConfig, type CustomCheckConfig } from '@kb-labs/release-manager-core';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { scopeToDir } from '../../shared/utils.js';
+import { scopeToDir, resolveScopePath } from '../../shared/utils.js';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, RunChecksRequest>): Promise<RunChecksResponse> {
     const scope = input.body?.scope ?? 'root';
     const cwd = ctx.cwd ?? process.cwd();
     const repoRoot = await findRepoRoot(cwd);
+    const scopeCwd = await resolveScopePath(repoRoot, scope);
     const startTime = Date.now();
 
     const config = await useConfig<ReleaseConfig>();
@@ -27,22 +28,18 @@ export default defineHandler({
     const scopeDir = scopeToDir(scope);
     const planPath = join(repoRoot, '.kb/release/plans', scopeDir, 'current', 'plan.json');
     let packagePaths: string[] = [];
-    let scopePath: string = repoRoot;
     try {
       const plan: { packages: Array<{ name: string; path: string }> } = JSON.parse(await readFile(planPath, 'utf-8'));
       packagePaths = plan.packages.map(pkg => pkg.path.startsWith('/') ? pkg.path : join(repoRoot, pkg.path));
-      if (packagePaths.length > 0) {
-        scopePath = findCommonAncestor(packagePaths) ?? repoRoot;
-      }
     } catch {
-      packagePaths = [repoRoot];
+      packagePaths = [scopeCwd];
     }
 
     // Run checks via core
     const results = await runReleaseChecks(checks, {
       repoRoot,
       packagePaths,
-      scopePath,
+      scopePath: scopeCwd,
       logger: ctx.platform?.logger,
     });
 
@@ -66,16 +63,3 @@ export default defineHandler({
     };
   },
 });
-
-function findCommonAncestor(paths: string[]): string | null {
-  if (paths.length === 0) return null;
-  if (paths.length === 1) return paths[0]!;
-  const parts = paths.map(p => p.split('/'));
-  const first = parts[0]!;
-  const common: string[] = [];
-  for (let i = 0; i < first.length; i++) {
-    if (parts.every(p => p[i] === first[i])) common.push(first[i]!);
-    else break;
-  }
-  return common.length > 0 ? common.join('/') : '/';
-}

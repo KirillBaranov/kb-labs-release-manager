@@ -210,6 +210,10 @@ export interface ChangelogGenerator {
 export interface PipelineOptions {
   cwd: string;
   repoRoot: string;
+  /** Resolved absolute path to the monorepo being released (e.g. infra/kb-labs-adapters).
+   *  Planner uses this as cwd for package discovery. */
+  scopeCwd: string;
+  /** Original scope name for display/reporting only */
   scope?: string;
   config: ReleaseConfig;
   dryRun?: boolean;

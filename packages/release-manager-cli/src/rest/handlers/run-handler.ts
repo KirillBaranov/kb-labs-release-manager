@@ -14,6 +14,7 @@ import {
   type PublishResult,
 } from '@kb-labs/release-manager-core';
 import { publishPackagesProgrammatic } from '../../shared/publish-programmatic';
+import { resolveScopePath } from '../../shared/utils';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, RunReleaseRequest>): Promise<RunReleaseResponse> {
@@ -23,6 +24,7 @@ export default defineHandler({
     const otp = input.body?.otp;
     const cwd = ctx.cwd ?? process.cwd();
     const repoRoot = await findRepoRoot(cwd);
+    const scopeCwd = await resolveScopePath(repoRoot, scope);
 
     const config = await useConfig<ReleaseConfig>() ?? {};
 
@@ -40,6 +42,7 @@ export default defineHandler({
     const result = await runReleasePipeline({
       cwd,
       repoRoot,
+      scopeCwd,
       scope,
       config,
       dryRun,

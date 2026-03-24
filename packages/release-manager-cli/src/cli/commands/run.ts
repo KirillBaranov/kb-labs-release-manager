@@ -14,8 +14,6 @@ import {
   runReleasePipeline,
   type ReleaseConfig,
   type ReleaseReport,
-  type VersionBump,
-  type ReleasePlan,
   type PublishablePackage,
   type PublishResult,
   type ChangelogGenerator,
@@ -25,7 +23,7 @@ import {
   generateSimpleChangelog,
   type ChangelogPackageInfo,
 } from '@kb-labs/release-manager-changelog';
-import { findRepoRoot } from '../../shared/utils';
+import { findRepoRoot, resolveScopePath } from '../../shared/utils';
 import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 
 type RunInput = {
@@ -127,9 +125,12 @@ export default defineCommand({
       const pipelineLoader = useLoader('Running release pipeline...');
       pipelineLoader.start();
 
+      const scopeCwd = await resolveScopePath(repoRoot, flags.scope || 'root');
+
       const result = await runReleasePipeline({
         cwd,
         repoRoot,
+        scopeCwd,
         scope: flags.scope,
         config,
         dryRun,

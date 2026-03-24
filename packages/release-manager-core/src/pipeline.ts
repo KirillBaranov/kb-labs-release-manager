@@ -27,7 +27,7 @@ import type {
  */
 export async function runReleasePipeline(options: PipelineOptions): Promise<PipelineResult> {
   const {
-    cwd, repoRoot, scope, config, dryRun = false,
+    cwd, repoRoot, scopeCwd, scope, config, dryRun = false,
     skipChecks = false, skipBuild = false, skipVerify = false,
     checks: checkConfigs, publisher, changelog: changelogGen,
     logger, onProgress,
@@ -39,12 +39,12 @@ export async function runReleasePipeline(options: PipelineOptions): Promise<Pipe
     onProgress?.(stage, msg);
   };
 
-  // 1. Plan
+  // 1. Plan — scopeCwd points to the monorepo root (e.g. infra/kb-labs-adapters),
+  // so planner discovers inner packages without scope name filtering.
   progress('planning', 'Discovering packages and planning release...');
   const plan = await planRelease({
-    cwd: repoRoot,
+    cwd: scopeCwd,
     config,
-    scope,
     bumpOverride: config.bump as VersionBump | undefined,
   });
 
@@ -71,7 +71,7 @@ export async function runReleasePipeline(options: PipelineOptions): Promise<Pipe
     const checkResults = await runReleaseChecks(checkConfigs, {
       repoRoot,
       packagePaths,
-      scopePath: scope ? plan.packages[0]?.path : undefined,
+      scopePath: scopeCwd,
       logger,
     });
 
@@ -161,8 +161,7 @@ export async function runReleasePipeline(options: PipelineOptions): Promise<Pipe
   if (changelogGen) {
     progress('versioning', 'Generating changelog...');
     try {
-      const gitCwd = scope && plan.packages[0] ? plan.packages[0].path : repoRoot;
-      changelogMd = await changelogGen.generate(plan, { repoRoot, gitCwd, config });
+      changelogMd = await changelogGen.generate(plan, { repoRoot, gitCwd: scopeCwd, config });
     } catch (err) {
       logger?.warn?.(`Changelog generation failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -192,8 +191,7 @@ export async function runReleasePipeline(options: PipelineOptions): Promise<Pipe
   let gitResult: { committed: boolean; tagged: string[]; pushed: boolean } | undefined;
   if (!dryRun && publishResult.errors.length === 0) {
     progress('verifying', 'Committing and tagging release...');
-    const gitCwd = scope && plan.packages[0] ? plan.packages[0].path : repoRoot;
-    gitResult = await commitAndTagRelease({ cwd: gitCwd, plan, dryRun });
+    gitResult = await commitAndTagRelease({ cwd: scopeCwd, plan, dryRun });
   }
 
   // 10. Report

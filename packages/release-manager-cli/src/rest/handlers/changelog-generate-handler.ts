@@ -69,7 +69,9 @@ export default defineHandler({
 
     // 4. Generate changelog using real implementation
     let markdown: string;
-    let tokensUsed = 0;
+    const tokensUsed = 0;
+    let usedLLM = false;
+    let commitsCount = 0;
     const useLLM = input.body?.useLLM ?? true;
 
     // Skip LLM if disabled - use simple changelog
@@ -115,18 +117,15 @@ export default defineHandler({
           });
 
           markdown = result.markdown;
+          commitsCount = result.changes.length;
+          usedLLM = true;
 
-          // Check if LLM was actually used (corporate-ai template should produce different output)
-          const isSimpleFormat = markdown.includes('## [') && markdown.split('\n').length < 10;
           ctx.platform?.logger?.info?.('LLM changelog generated', {
             scope,
             markdownLength: markdown.length,
             linesCount: markdown.split('\n').length,
-            likelyUsedLLM: !isSimpleFormat,
+            commitsCount,
           });
-
-          // TODO: Track actual token usage from LLM calls
-          tokensUsed = 0; // Not available in current implementation
         } catch (error) {
           // Fallback to simple changelog if generation fails
           ctx.platform?.logger?.error?.(
@@ -157,6 +156,8 @@ export default defineHandler({
       scope,
       path: changelogPath,
       packagesCount: packages.length,
+      commitsCount,
+      usedLLM,
       durationMs: duration,
     });
 
@@ -164,8 +165,10 @@ export default defineHandler({
     ctx.platform?.analytics?.track?.(ANALYTICS_EVENTS.CHANGELOG_FINISHED, {
       scope,
       packagesCount: packages.length,
+      commitsCount,
       durationMs: duration,
       tokensUsed,
+      usedLLM,
       actor: ANALYTICS_ACTOR,
     });
 
@@ -174,6 +177,8 @@ export default defineHandler({
       markdown,
       changelogPath,
       tokensUsed,
+      usedLLM,
+      commitsCount,
     };
   }
 });

@@ -38,14 +38,14 @@ export default defineHandler({
 
     if (changelogContent) {
       for (const r of results) {
-        if (!r.success) break;
+        if (!r.success) {break;}
         const pkg = plan.packages.find(p => p.name === r.name);
-        if (!pkg) continue;
+        if (!pkg) {continue;}
         const pkgPath = pkg.path.startsWith('/') ? pkg.path : join(repoRoot, pkg.path);
         try {
           await writeFile(join(pkgPath, 'CHANGELOG.md'), changelogContent, 'utf-8');
           const distDir = join(pkgPath, 'dist');
-          if (!existsSync(distDir)) await mkdir(distDir, { recursive: true });
+          if (!existsSync(distDir)) {await mkdir(distDir, { recursive: true });}
           await writeFile(join(distDir, 'CHANGELOG.md'), changelogContent, 'utf-8');
         } catch { /* skip */ }
       }

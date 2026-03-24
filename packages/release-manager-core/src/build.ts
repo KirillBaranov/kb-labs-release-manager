@@ -114,6 +114,7 @@ async function runDirectBuild(packagePath: string, packageName: string): Promise
 
 /**
  * Spawn a shell command and collect results.
+ * Captures both stdout and stderr — build tools often write errors to stdout.
  */
 export function spawnCommand(command: string, cwd: string, timeoutMs = 5 * 60 * 1000): Promise<Omit<BuildResult, 'name'>> {
   const startTime = Date.now();
@@ -126,15 +127,30 @@ export function spawnCommand(command: string, cwd: string, timeoutMs = 5 * 60 * 
       env: { ...process.env },
     });
 
+    let stdout = '';
     let stderr = '';
+    child.stdout?.on('data', (data) => { stdout += data.toString(); });
     child.stderr?.on('data', (data) => { stderr += data.toString(); });
 
     child.on('close', (code) => {
       const durationMs = Date.now() - startTime;
-      resolve(code === 0
-        ? { success: true, durationMs }
-        : { success: false, error: stderr || `Build failed with exit code ${code}`, durationMs }
-      );
+      if (code === 0) {
+        resolve({ success: true, durationMs });
+        return;
+      }
+
+      // Build error message from available output (last N lines to keep it readable)
+      const combined = (stderr || stdout).trim();
+      const tail = combined
+        .split('\n')
+        .slice(-30)
+        .join('\n');
+
+      resolve({
+        success: false,
+        error: tail || `Build failed with exit code ${code}`,
+        durationMs,
+      });
     });
 
     child.on('error', (err) => {

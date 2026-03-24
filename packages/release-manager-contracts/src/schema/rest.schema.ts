@@ -180,6 +180,8 @@ export const GenerateChangelogResponseSchema = z.object({
   markdown: z.string(),
   changelogPath: z.string(),
   tokensUsed: z.number().int().min(0).optional(),
+  usedLLM: z.boolean().optional(),
+  commitsCount: z.number().int().min(0).optional(),
 });
 
 export type GenerateChangelogResponse = z.infer<typeof GenerateChangelogResponseSchema>;

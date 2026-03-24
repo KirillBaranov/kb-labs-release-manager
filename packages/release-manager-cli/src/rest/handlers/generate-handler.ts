@@ -13,7 +13,7 @@ import type {
 } from '@kb-labs/release-manager-contracts';
 import { RELEASE_CACHE_PREFIX } from '@kb-labs/release-manager-contracts';
 import { planRelease, type ReleaseConfig, type VersionBump } from '@kb-labs/release-manager-core';
-import { scopeToDir } from '../../shared/utils';
+import { scopeToDir, resolveScopePath } from '../../shared/utils';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, GeneratePlanRequest>): Promise<GeneratePlanResponse> {
@@ -24,10 +24,9 @@ export default defineHandler({
     const cwd = ctx.cwd ?? process.cwd();
     const repoRoot = await findRepoRoot(cwd);
 
-    // If scopePath provided, use it as cwd for package discovery (no name filter)
-    // This guarantees correct discovery for monorepos regardless of package.json name
-    const planCwd = scopePath ?? repoRoot;
-    const planScope = scopePath ? undefined : scope;
+    // Always resolve scope to a filesystem path so planner discovers inner packages.
+    // scopePath (explicit) takes priority, otherwise resolve from scope name.
+    const planCwd = scopePath ?? await resolveScopePath(repoRoot, scope);
 
     ctx.platform?.logger?.info?.('Generating release plan', { scope, scopePath, planCwd, bump, useLLM });
 
@@ -43,11 +42,11 @@ export default defineHandler({
       versioningStrategy: releaseConfig?.versioningStrategy,
     };
 
-    // Use core planner to discover packages and compute versions
+    // Use core planner to discover packages and compute versions.
+    // No scope filter — planCwd already points to the right monorepo root.
     const corePlan = await planRelease({
       cwd: planCwd,
       config,
-      scope: planScope,
       bumpOverride: bump as VersionBump | undefined,
     });
 

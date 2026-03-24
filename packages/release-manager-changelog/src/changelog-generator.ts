@@ -9,7 +9,6 @@ import { resolveGitRange } from './git-range';
 import { parseCommits } from './parser';
 import { detectProvider, enhanceChangeWithLinks } from './providers';
 import { createReleaseManifest, formatAsJson } from './formatters/json';
-import { formatLockstepChangelog } from './formatters/markdown';
 import { loadTemplate, packageToTemplateData } from './templates';
 
 /**
@@ -198,17 +197,95 @@ export async function generateChangelog(
 
   let markdown: string;
 
+  // Step 8: Load template and format
+  const templateName = changelogConfig?.template || 'corporate-ai';
+  onProgress?.(`Loading template "${templateName}"...`);
+  const template = await loadTemplate(templateName, repoRoot);
+
   if (isLockstep) {
-    // Consolidated single-section changelog for lockstep monorepo releases
+    // Consolidated changelog for lockstep monorepo releases:
+    // Merge all packages into one virtual release and render through template
     onProgress?.('Formatting consolidated lockstep changelog...');
     const sharedVersion = packageReleases[0]!.next;
-    markdown = formatLockstepChangelog(packageReleases, sharedVersion, locale);
-  } else {
-    // Step 8 (original): Load template and format each package separately
-    const templateName = changelogConfig?.template || 'corporate-ai';
-    onProgress?.(`Loading template "${templateName}"...`);
-    const template = await loadTemplate(templateName, repoRoot);
+    const sharedPrev = packageReleases[0]!.prev;
 
+    // Use ALL parsed changes (not just package-filtered ones) for lockstep changelog.
+    // Package filtering can miss root-level commits (e.g. config, CI, docs) that don't
+    // touch files inside packages/ directories but are still part of the release.
+    const mergedChanges = enhancedChanges;
+
+    // Merge breaking changes from all commits
+    const seenBreaking = new Set<string>();
+    const mergedBreaking = enhancedChanges
+      .filter(c => c.breaking && c.breaking.length > 0)
+      .flatMap(c => c.breaking!)
+      .filter(b => {
+        if (seenBreaking.has(b.summary)) {return false;}
+        seenBreaking.add(b.summary);
+        return true;
+      });
+
+    // Determine overall reason from merged changes
+    const hasBreaking = mergedBreaking.length > 0;
+    const hasFeat = mergedChanges.some(c => c.type === 'feat');
+    const hasFix = mergedChanges.some(c => c.type === 'fix');
+    const hasPerf = mergedChanges.some(c => c.type === 'perf');
+    let reason: 'breaking' | 'feat' | 'fix' | 'perf' | 'ripple' | 'manual' = 'manual';
+    if (hasBreaking) {reason = 'breaking';}
+    else if (hasFeat) {reason = 'feat';}
+    else if (hasFix) {reason = 'fix';}
+    else if (hasPerf) {reason = 'perf';}
+
+    // Build scope display name
+    const scopeName = packages.length > 0 ? packages[0]!.name.replace(/\/[^/]+$/, '') : 'monorepo';
+
+    // Build lockstep header with packages table
+    const date = new Date().toISOString().split('T')[0]!;
+    const pkgWord = locale === 'ru' ? 'пакетов' : packages.length === 1 ? 'package' : 'packages';
+    const headerLines: string[] = [
+      `## [${sharedVersion}] - ${date}`,
+      '',
+      `**${packageReleases.length} ${pkgWord}** bumped to v${sharedVersion}`,
+      '',
+      `| ${locale === 'ru' ? 'Пакет' : 'Package'} | ${locale === 'ru' ? 'Предыдущая' : 'Previous'} | ${locale === 'ru' ? 'Тип' : 'Bump'} |`,
+      `|---------|----------|------|`,
+      ...packageReleases.filter(p => p.bump !== 'none').map(p => `| \`${p.name}\` | ${p.prev} | ${p.bump} |`),
+      '',
+    ];
+
+    // Render merged changes through template (gets LLM enhancement)
+    const mergedRelease: PackageRelease = {
+      name: scopeName,
+      prev: sharedPrev,
+      next: sharedVersion,
+      bump: packageReleases[0]!.bump,
+      reason,
+      breaking: mergedBreaking,
+      changes: mergedChanges,
+    };
+
+    onProgress?.('Enhancing lockstep changelog with template...');
+    const templateData = packageToTemplateData(mergedRelease, locale, changelogConfig?.metadata);
+    const result = template.render(templateData, platform);
+    const rendered = typeof result === 'string' ? result : await result;
+
+    // Strip the template's own header (## [version] - date + blockquote) — we use lockstep header instead
+    const renderedLines = rendered.split('\n');
+    let contentStartIdx = 0;
+    for (let i = 0; i < renderedLines.length; i++) {
+      const line = renderedLines[i]!;
+      // Skip header lines: ## [version], empty lines, and > blockquote
+      if (line.startsWith('## [') || line.startsWith('> **') || line.trim() === '') {
+        contentStartIdx = i + 1;
+      } else {
+        break;
+      }
+    }
+    const contentBody = renderedLines.slice(contentStartIdx).join('\n').trim();
+
+    markdown = headerLines.join('\n') + (contentBody ? '\n' + contentBody : `\n*${locale === 'ru' ? 'Без функциональных изменений.' : 'No functional changes.'}*`);
+  } else {
+    // Format each package separately through template
     const formattedPackages: string[] = [];
     for (let i = 0; i < packageReleases.length; i++) {
       const pkg = packageReleases[i];

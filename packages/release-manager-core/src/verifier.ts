@@ -8,7 +8,7 @@ import { join, dirname, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { rmSync, writeFileSync, copyFileSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import type { VerifyResult, PackageVersion } from './types';
 
 /**
@@ -65,7 +65,7 @@ export function verifyPackage(packagePath: string, packageName?: string): Verify
     const modPkg = JSON.parse(origPkg);
     for (const section of ['dependencies', 'devDependencies', 'peerDependencies']) {
       const deps = modPkg[section];
-      if (!deps) continue;
+      if (!deps) {continue;}
       for (const [k, v] of Object.entries(deps)) {
         if (typeof v === 'string' && (v as string).startsWith('link:')) {
           deps[k] = '*';
@@ -157,8 +157,8 @@ function resolveEsmEntry(pkg: any): string | undefined {
 
 function resolveCjsEntry(pkg: any): string | undefined {
   const req = pkg.exports?.['.']?.require;
-  if (req) return req;
-  if (pkg.main?.endsWith('.cjs')) return pkg.main;
+  if (req) {return req;}
+  if (pkg.main?.endsWith('.cjs')) {return pkg.main;}
   return undefined;
 }
 
@@ -181,7 +181,7 @@ function checkDirectoryImports(filePath: string, distDir: string, issues: string
 
   while ((match = importRegex.exec(content)) !== null) {
     const target = match[1];
-    if (!target || target.includes('.')) continue; // has extension, ok
+    if (!target || target.includes('.')) {continue;} // has extension, ok
     const targetPath = resolve(dirname(filePath), target);
     if (existsSync(targetPath) && statSync(targetPath).isDirectory()) {
       issues.push(`Directory import '${target}' in ${filePath.split('/').pop()}`);
@@ -190,14 +190,14 @@ function checkDirectoryImports(filePath: string, distDir: string, issues: string
 }
 
 function findFiles(dir: string, predicate: (f: string) => boolean): string[] {
-  if (!existsSync(dir)) return [];
+  if (!existsSync(dir)) {return [];}
   const results: string[] = [];
   function walk(d: string) {
     try {
       for (const entry of readdirSync(d, { withFileTypes: true })) {
         const full = join(d, entry.name);
-        if (entry.isDirectory()) walk(full);
-        else if (predicate(full)) results.push(entry.name);
+        if (entry.isDirectory()) {walk(full);}
+        else if (predicate(full)) {results.push(entry.name);}
       }
     } catch { /* skip */ }
   }
