@@ -2,7 +2,7 @@
  * Run release handler — thin adapter over core runReleasePipeline().
  */
 
-import { defineHandler, findRepoRoot, type RestInput, useConfig } from '@kb-labs/sdk';
+import { defineHandler, findRepoRoot, type RestInput, useConfig, useLLM } from '@kb-labs/sdk';
 import type {
   RunReleaseRequest,
   RunReleaseResponse,
@@ -12,7 +12,13 @@ import {
   type ReleaseConfig,
   type PublishablePackage,
   type PublishResult,
+  type ChangelogGenerator,
 } from '@kb-labs/release-manager-core';
+import {
+  generateChangelog,
+  generateSimpleChangelog,
+  type ChangelogPackageInfo,
+} from '@kb-labs/release-manager-changelog';
 import { publishPackagesProgrammatic } from '../../shared/publish-programmatic';
 import { resolveScopePath } from '../../shared/utils';
 
@@ -27,6 +33,49 @@ export default defineHandler({
     const scopeCwd = await resolveScopePath(repoRoot, scope);
 
     const config = await useConfig<ReleaseConfig>() ?? {};
+
+    // Changelog generator (with LLM if available)
+    const llm = useLLM();
+    const changelog: ChangelogGenerator = {
+      async generate(plan, opts) {
+        const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
+        const packages: ChangelogPackageInfo[] = plan.packages.map(pkg => ({
+          name: pkg.name,
+          path: pkg.path,
+          currentVersion: pkg.currentVersion,
+          nextVersion: pkg.nextVersion,
+          bump: pkg.bump === 'auto' ? 'patch' : pkg.bump,
+        }));
+        try {
+          const result = await generateChangelog({
+            repoRoot: opts.repoRoot,
+            gitCwd: opts.gitCwd,
+            packages,
+            range: { to: 'HEAD' },
+            changelog: {
+              template: config.changelog?.template ?? undefined,
+              locale,
+              metadata: config.changelog?.metadata,
+              ignoreAuthors: config.changelog?.ignoreAuthors,
+              includeTypes: config.changelog?.includeTypes as string[],
+              excludeTypes: config.changelog?.excludeTypes as string[],
+              collapseMerges: config.changelog?.collapseMerges,
+              collapseReverts: config.changelog?.collapseReverts,
+              preferMergeSummary: config.changelog?.preferMergeSummary,
+            },
+            git: {
+              autoUnshallow: config.git?.autoUnshallow,
+              requireSignedTags: config.git?.requireSignedTags,
+              baseUrl: config.git?.baseUrl ?? undefined,
+            },
+            platform: llm ? { llm } : undefined,
+          });
+          return result.markdown;
+        } catch {
+          return generateSimpleChangelog(packages, locale);
+        }
+      },
+    };
 
     // Programmatic publisher (token-based, no interactive OTP)
     const publisher = {
@@ -49,6 +98,7 @@ export default defineHandler({
       skipChecks,
       checks: config.checks ?? [],
       publisher,
+      changelog,
       logger: ctx.platform?.logger,
     });
 

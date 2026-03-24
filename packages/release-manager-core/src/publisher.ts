@@ -3,6 +3,7 @@
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PackageVersion, ReleasePlan } from './types';
 import type { ShellAPI } from '@kb-labs/sdk';
@@ -385,8 +386,11 @@ export async function commitAndTagRelease(options: {
     for (const pkg of plan.packages) {
       const pkgGit = simpleGit(pkg.path);
 
-      // Stage package.json and CHANGELOG.md
-      await pkgGit.add(['package.json', 'CHANGELOG.md']);
+      // Stage package.json and CHANGELOG.md (only if it exists)
+      const filesToStage = ['package.json'];
+      const changelogPath = join(pkg.path, 'CHANGELOG.md');
+      if (existsSync(changelogPath)) filesToStage.push('CHANGELOG.md');
+      await pkgGit.add(filesToStage);
 
       try {
         await pkgGit.commit(commitMessage);
