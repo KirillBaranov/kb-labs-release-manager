@@ -46,7 +46,7 @@ export default defineCommand({
       const cwd = ctx.cwd || process.cwd();
       const repoRoot = await findRepoRoot(cwd);
 
-      // Load configuration with loader
+      // Load configuration
       const configLoader = useLoader('Loading release configuration...');
       configLoader.start();
 
@@ -61,7 +61,7 @@ export default defineCommand({
 
       configLoader.succeed('Configuration loaded');
 
-      // Create release plan with loader
+      // Create release plan
       const planLoader = useLoader('Discovering packages and planning release...');
       planLoader.start();
 

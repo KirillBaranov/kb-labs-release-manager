@@ -1,4 +1,4 @@
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import globby from 'globby';
 

@@ -14,6 +14,7 @@ export interface PublisherOptions {
   plan: ReleasePlan;
   dryRun?: boolean;
   shell?: ShellAPI;
+  config?: import('./types').ReleaseConfig;
 }
 
 export interface PublishingResult {
@@ -83,9 +84,11 @@ export async function publishPackages(options: PublisherOptions): Promise<Publis
       }
 
       // 2. Publish to npm
+      const pm = options.config?.publish?.packageManager ?? 'pnpm';
+      const access = options.config?.publish?.access ?? 'public';
       const publishResult = await shellApi.exec(
-        'pnpm',
-        ['publish', '--access', 'public', '--registry', registry],
+        pm,
+        ['publish', '--access', access, '--registry', registry],
         {
           cwd: pkg.path,
           timeout: 60000,
@@ -389,7 +392,7 @@ export async function commitAndTagRelease(options: {
       // Stage package.json and CHANGELOG.md (only if it exists)
       const filesToStage = ['package.json'];
       const changelogPath = join(pkg.path, 'CHANGELOG.md');
-      if (existsSync(changelogPath)) filesToStage.push('CHANGELOG.md');
+      if (existsSync(changelogPath)) {filesToStage.push('CHANGELOG.md');}
       await pkgGit.add(filesToStage);
 
       try {

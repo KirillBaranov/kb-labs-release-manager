@@ -164,11 +164,15 @@ function resolveCjsEntry(pkg: any): string | undefined {
 
 function checkExportsExist(exports: any, baseDir: string, prefix: string, issues: string[]): void {
   if (typeof exports === 'string') {
+    // Skip wildcard patterns like "./dist/*" — can't verify statically
+    if (exports.includes('*')) { return; }
     if (!existsSync(join(baseDir, exports))) {
       issues.push(`${prefix}: ${exports} missing`);
     }
   } else if (exports && typeof exports === 'object') {
     for (const [k, v] of Object.entries(exports)) {
+      // Skip wildcard export keys like "./dist/*"
+      if (k.includes('*')) { continue; }
       checkExportsExist(v, baseDir, `${prefix}.${k}`, issues);
     }
   }

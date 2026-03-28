@@ -7,7 +7,8 @@ import type { RunChecksRequest, RunChecksResponse, CheckResultItem } from '@kb-l
 import { runReleaseChecks, type ReleaseConfig, type CustomCheckConfig } from '@kb-labs/release-manager-core';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { scopeToDir, resolveScopePath } from '../../shared/utils.js';
+import { scopeToDir } from '../../shared/utils.js';
+import { resolveScopePath } from '@kb-labs/release-manager-core';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, RunChecksRequest>): Promise<RunChecksResponse> {
@@ -18,7 +19,7 @@ export default defineHandler({
     const startTime = Date.now();
 
     const config = await useConfig<ReleaseConfig>();
-    const checks: CustomCheckConfig[] = config?.checks ?? [];
+    const checks: CustomCheckConfig[] = config?.scopes?.[scope]?.checks ?? config?.checks ?? [];
 
     if (checks.length === 0) {
       return { scope, success: true, checks: [], totalDurationMs: Date.now() - startTime };

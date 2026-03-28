@@ -1,11 +1,11 @@
 /**
  * Unified check runner for release manager.
- * Reads config.checks[], supports safe build, script path resolution, perPackage routing.
+ * Reads config.checks[], supports parser field, script path resolution, perPackage routing.
  */
 
 import { join } from 'node:path';
 import type { CustomCheckConfig, CheckResult } from './types';
-import { runSafeBuild, isBuildCommand, spawnCommand } from './build';
+import { spawnCommand } from './build';
 
 export interface CheckRunnerOptions {
   repoRoot: string;
@@ -16,7 +16,7 @@ export interface CheckRunnerOptions {
 
 /**
  * Run all configured checks against packages.
- * Handles: safe build for build commands, script path resolution, perPackage/scopePath/repoRoot routing.
+ * Handles: parser evaluation, script path resolution, perPackage/scopePath/repoRoot routing.
  */
 export async function runReleaseChecks(
   checks: CustomCheckConfig[],
@@ -43,8 +43,6 @@ async function runSingleCheck(
   check: CustomCheckConfig,
   options: CheckRunnerOptions,
 ): Promise<CheckResult> {
-  const startTime = Date.now();
-
   // Determine which directories to run this check in
   const runIn = check.runIn ?? 'perPackage';
   let pathsToRun: string[];
@@ -62,18 +60,6 @@ async function runSingleCheck(
   let totalDurationMs = 0;
 
   for (const pkgPath of pathsToRun) {
-    // If this check runs a build command, use safe build
-    if (isBuildCommand(check.command, check.args)) {
-      const result = await runSafeBuild(pkgPath, check.id);
-      totalDurationMs += result.durationMs;
-      if (!result.success) {
-        checkOk = false;
-        checkError = result.error;
-        break;
-      }
-      continue;
-    }
-
     // Resolve script paths in args relative to repo root
     const resolvedArgs = (check.args ?? []).map(arg =>
       arg.match(/\.(sh|js|ts|mjs|cjs)$/) ? join(options.repoRoot, arg) : arg
@@ -84,9 +70,11 @@ async function runSingleCheck(
     const result = await spawnCommand(fullCommand, pkgPath, timeoutMs);
     totalDurationMs += result.durationMs;
 
-    if (!result.success) {
+    const ok = evaluateParser(check, result.stdout, result.stderr, result.exitCode);
+
+    if (!ok) {
       checkOk = false;
-      checkError = result.error;
+      checkError = result.error ?? (result.stderr || result.stdout || `exit code ${result.exitCode}`);
       break;
     }
   }
@@ -98,4 +86,32 @@ async function runSingleCheck(
     hint: check.optional ? 'optional' : undefined,
     timingMs: totalDurationMs,
   };
+}
+
+function evaluateParser(
+  check: CustomCheckConfig,
+  stdout: string,
+  stderr: string,
+  exitCode: number,
+): boolean {
+  const parser = check.parser ?? 'exitcode';
+
+  if (parser === 'exitcode') {
+    return exitCode === 0;
+  }
+
+  if (parser === 'json') {
+    try {
+      const parsed = JSON.parse(stdout);
+      return parsed.ok === true || parsed.success === true || parsed.status === 'ok';
+    } catch {
+      return false;
+    }
+  }
+
+  if (typeof parser === 'function') {
+    return parser(stdout, stderr, exitCode);
+  }
+
+  return exitCode === 0;
 }

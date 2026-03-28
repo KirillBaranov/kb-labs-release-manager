@@ -12,4 +12,5 @@ export { runReleasePipeline } from './pipeline';
 export { buildPackages, runSafeBuild, isBuildCommand, spawnCommand } from './build';
 export { runReleaseChecks } from './checks';
 export { verifyPackage, verifyPackages } from './verifier';
+export { resolveScopePath } from './scope';
 

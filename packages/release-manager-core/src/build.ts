@@ -112,11 +112,17 @@ async function runDirectBuild(packagePath: string, packageName: string): Promise
   return { ...result, name: packageName };
 }
 
+export interface SpawnResult extends Omit<BuildResult, 'name'> {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
 /**
  * Spawn a shell command and collect results.
  * Captures both stdout and stderr — build tools often write errors to stdout.
  */
-export function spawnCommand(command: string, cwd: string, timeoutMs = 5 * 60 * 1000): Promise<Omit<BuildResult, 'name'>> {
+export function spawnCommand(command: string, cwd: string, timeoutMs = 5 * 60 * 1000): Promise<SpawnResult> {
   const startTime = Date.now();
 
   return new Promise((resolve) => {
@@ -133,9 +139,10 @@ export function spawnCommand(command: string, cwd: string, timeoutMs = 5 * 60 * 
     child.stderr?.on('data', (data) => { stderr += data.toString(); });
 
     child.on('close', (code) => {
+      const exitCode = code ?? 1;
       const durationMs = Date.now() - startTime;
-      if (code === 0) {
-        resolve({ success: true, durationMs });
+      if (exitCode === 0) {
+        resolve({ success: true, durationMs, stdout, stderr, exitCode });
         return;
       }
 
@@ -148,18 +155,21 @@ export function spawnCommand(command: string, cwd: string, timeoutMs = 5 * 60 * 
 
       resolve({
         success: false,
-        error: tail || `Build failed with exit code ${code}`,
+        error: tail || `Build failed with exit code ${exitCode}`,
         durationMs,
+        stdout,
+        stderr,
+        exitCode,
       });
     });
 
     child.on('error', (err) => {
-      resolve({ success: false, error: err.message, durationMs: Date.now() - startTime });
+      resolve({ success: false, error: err.message, durationMs: Date.now() - startTime, stdout: '', stderr: '', exitCode: 1 });
     });
 
     setTimeout(() => {
       child.kill();
-      resolve({ success: false, error: `Timed out after ${timeoutMs / 1000}s`, durationMs: Date.now() - startTime });
+      resolve({ success: false, error: `Timed out after ${timeoutMs / 1000}s`, durationMs: Date.now() - startTime, stdout: '', stderr: '', exitCode: 1 });
     }, timeoutMs);
   });
 }

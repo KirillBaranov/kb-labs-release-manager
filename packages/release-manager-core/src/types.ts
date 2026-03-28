@@ -64,14 +64,6 @@ export interface CustomCheckConfig {
   runIn?: 'repoRoot' | 'scopePath' | 'perPackage';
 }
 
-export interface ReleaseChecks {
-  audit?: CheckResult;
-  devlink?: CheckResult;
-  mind?: CheckResult;
-  tests?: CheckResult;
-  build?: CheckResult;
-}
-
 export interface ReleaseResult {
   ok: boolean;
   version?: string;
@@ -104,6 +96,16 @@ export interface ReleaseReport {
   result: ReleaseResult;
 }
 
+export interface PackagesFilter {
+  /** Glob dirs to scan, e.g. ['packages/*', 'apps/*'].
+   *  Defaults to full tree scan when omitted. */
+  paths?: string[];
+  /** If set — only packages matching any pattern are included. */
+  include?: string[];
+  /** Packages matching any pattern are excluded (applied after include). */
+  exclude?: string[];
+}
+
 export interface ReleaseConfig {
   registry?: string;
   strategy?: 'semver';
@@ -115,7 +117,19 @@ export interface ReleaseConfig {
   publish?: {
     npm?: boolean;
     github?: boolean;
+    /** npm publish --access. Default: 'public'. */
+    access?: 'public' | 'restricted';
+    /** Package manager to use for publishing. Default: 'pnpm'. */
+    packageManager?: 'pnpm' | 'npm' | 'yarn';
   };
+  /** Filter which packages are discovered and released. */
+  packages?: PackagesFilter;
+  /** Per-scope overrides — packages filter merged with global, checks replace global entirely. */
+  scopes?: Record<string, {
+    packages?: PackagesFilter;
+    /** If set, replaces global `checks` for this scope. */
+    checks?: CustomCheckConfig[];
+  }>;
   rollback?: {
     enabled?: boolean;
     maxHistory?: number;

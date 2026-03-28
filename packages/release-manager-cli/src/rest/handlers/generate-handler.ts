@@ -13,22 +13,17 @@ import type {
 } from '@kb-labs/release-manager-contracts';
 import { RELEASE_CACHE_PREFIX } from '@kb-labs/release-manager-contracts';
 import { planRelease, type ReleaseConfig, type VersionBump } from '@kb-labs/release-manager-core';
-import { scopeToDir, resolveScopePath } from '../../shared/utils';
+import { scopeToDir } from '../../shared/utils';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, GeneratePlanRequest>): Promise<GeneratePlanResponse> {
     const scope = input.body?.scope || 'root';
-    const scopePath = input.body?.scopePath; // Absolute path — use as cwd for discovery
     const bump = input.body?.bump || 'auto';
     const useLLM = input.body?.useLLM ?? true;
     const cwd = ctx.cwd ?? process.cwd();
     const repoRoot = await findRepoRoot(cwd);
 
-    // Always resolve scope to a filesystem path so planner discovers inner packages.
-    // scopePath (explicit) takes priority, otherwise resolve from scope name.
-    const planCwd = scopePath ?? await resolveScopePath(repoRoot, scope);
-
-    ctx.platform?.logger?.info?.('Generating release plan', { scope, scopePath, planCwd, bump, useLLM });
+    ctx.platform?.logger?.info?.('Generating release plan', { scope, bump, useLLM });
 
     // Read versioningStrategy from kb.config.json release section
     const releaseConfig = await useConfig<ReleaseConfig>();
@@ -40,13 +35,17 @@ export default defineHandler({
       registry: 'https://registry.npmjs.org',
       rollback: { enabled: true },
       versioningStrategy: releaseConfig?.versioningStrategy,
+      packages: releaseConfig?.packages,
+      scopes: releaseConfig?.scopes,
+      publish: releaseConfig?.publish,
     };
 
     // Use core planner to discover packages and compute versions.
-    // No scope filter — planCwd already points to the right monorepo root.
+    // Always discover from repoRoot; scope is a filter applied inside planner.
     const corePlan = await planRelease({
-      cwd: planCwd,
+      cwd: repoRoot,
       config,
+      scope: scope !== 'root' ? scope : undefined,
       bumpOverride: bump as VersionBump | undefined,
     });
 

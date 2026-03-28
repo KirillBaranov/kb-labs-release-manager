@@ -20,7 +20,7 @@ import {
   type ChangelogPackageInfo,
 } from '@kb-labs/release-manager-changelog';
 import { publishPackagesProgrammatic } from '../../shared/publish-programmatic';
-import { resolveScopePath } from '../../shared/utils';
+import { resolveScopePath } from '@kb-labs/release-manager-core';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, RunReleaseRequest>): Promise<RunReleaseResponse> {
@@ -96,7 +96,7 @@ export default defineHandler({
       config,
       dryRun,
       skipChecks,
-      checks: config.checks ?? [],
+      checks: config.scopes?.[scope]?.checks ?? config.checks ?? [],
       publisher,
       changelog,
       logger: ctx.platform?.logger,

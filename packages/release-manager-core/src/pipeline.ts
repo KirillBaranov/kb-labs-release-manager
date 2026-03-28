@@ -39,12 +39,13 @@ export async function runReleasePipeline(options: PipelineOptions): Promise<Pipe
     onProgress?.(stage, msg);
   };
 
-  // 1. Plan — scopeCwd points to the monorepo root (e.g. infra/kb-labs-adapters),
-  // so planner discovers inner packages without scope name filtering.
+  // 1. Plan — always discover from repoRoot with scope as a filter.
+  // scopeCwd is used only for checks/git/changelog (physical path ops), not for discovery.
   progress('planning', 'Discovering packages and planning release...');
   const plan = await planRelease({
-    cwd: scopeCwd,
+    cwd: repoRoot,
     config,
+    scope,
     bumpOverride: config.bump as VersionBump | undefined,
   });
 

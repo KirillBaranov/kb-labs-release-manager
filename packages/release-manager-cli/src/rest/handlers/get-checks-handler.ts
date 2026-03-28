@@ -14,7 +14,7 @@ export default defineHandler({
     const scope = input.query?.scope ?? 'root';
 
     const config = await useConfig<ReleaseConfig>();
-    const checks: CustomCheckConfig[] = config?.checks ?? [];
+    const checks: CustomCheckConfig[] = config?.scopes?.[scope]?.checks ?? config?.checks ?? [];
 
     return {
       scope,

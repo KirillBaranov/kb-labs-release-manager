@@ -4,7 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import simpleGit from 'simple-git';
 import semver from 'semver';
 import globby from 'globby';
@@ -25,8 +25,16 @@ export interface PlannerOptions {
 export async function planRelease(options: PlannerOptions): Promise<ReleasePlan> {
   const { cwd, config, scope, bumpOverride } = options;
 
-  // Discover packages
-  const packages = await discoverPackages(cwd, scope, config);
+  // Step 1: discover all candidates according to config (paths/include/exclude)
+  const allPackages = await discoverPackages(cwd, config);
+
+  // Step 2: if scope given, filter candidates and produce clear errors
+  let packages: PackageVersion[];
+  if (scope && scope !== 'root') {
+    packages = filterByScope(allPackages, scope, config);
+  } else {
+    packages = allPackages;
+  }
 
   // Workspace root with submodules: each sub-repo has its own git,
   // so we skip workspace-level detectModifiedPackages and use per-repo git.
@@ -94,24 +102,24 @@ function mapBumpStrategyToVersionStrategy(
   return 'independent';
 }
 
-async function discoverPackages(cwd: string, scope?: string, config?: ReleaseConfig): Promise<PackageVersion[]> {
-  // If cwd is the workspace root (has .gitmodules), discover sub-repos as release units
+/**
+ * Discover all release candidates according to config.packages (paths/include/exclude).
+ * Does NOT apply scope filtering — that's done separately in filterByScope().
+ */
+async function discoverPackages(cwd: string, config?: ReleaseConfig): Promise<PackageVersion[]> {
+  // Workspace root with .gitmodules → sub-repos are the release units
   const isWorkspaceRoot = existsSync(join(cwd, '.gitmodules'));
-  if (isWorkspaceRoot && !scope) {
-    return discoverSubRepoPackages(cwd);
+  if (isWorkspaceRoot) {
+    return discoverSubRepoPackages(cwd, config);
   }
 
   const packages: PackageVersion[] = [];
 
-  // Determine scope type:
-  // 1. Exact package name: @kb-labs/core, my-package
-  // 2. Wildcard pattern: @kb-labs/core-*, packages/*
-  // 3. Path pattern: packages/*/src
-  const isExactPackageName = scope && !scope.includes('*') && (scope.startsWith('@') || !scope.includes('/'));
-  const isWildcardPattern = scope && scope.includes('*');
-
-  // Find package.json files - support nested monorepos
-  const pattern = '**/package.json';
+  // Scan dirs from config.packages.paths, or full tree
+  const configPaths = config?.packages?.paths;
+  const pattern = configPaths?.length
+    ? configPaths.map(p => `${p}/package.json`)
+    : '**/package.json';
 
   const packageJsonPaths = await globby(pattern, {
     cwd,
@@ -128,47 +136,24 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
 
   for (let i = 0; i < packageJsonPaths.length; i++) {
     if (i % 10 === 0) {
-      await new Promise((resolve) => {
-        setImmediate(resolve);
-      });
+      await new Promise((resolve) => { setImmediate(resolve); });
     }
 
     const packageJsonPath = packageJsonPaths[i]!;
     const packagePath = join(packageJsonPath, '..');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-
     const isRootPackageJson = packageJsonPath === join(cwd, 'package.json');
 
-    // Skip private packages (always)
-    if (packageJson.private) {
-      continue;
-    }
+    if (packageJson.private) {continue;}
+    if (isRootPackageJson && existsSync(join(packagePath, 'pnpm-workspace.yaml'))) {continue;}
+    if (isRootPackageJson && !packageJson.name) {continue;}
 
-    // Skip monorepo root package.json — it's a workspace manifest, not a buildable package.
-    // The actual buildable packages are inside packages/ or apps/.
-    if (isRootPackageJson && existsSync(join(packagePath, 'pnpm-workspace.yaml'))) {
-      continue;
-    }
-
-    // Skip root package.json without name (workspace-only manifest)
-    if (isRootPackageJson && !packageJson.name) {
-      continue;
-    }
-
-    // If scope is exact package name, filter by exact match
-    if (isExactPackageName && packageJson.name !== scope) {
-      continue;
-    }
-
-    // If scope is wildcard pattern, filter by glob match
-    if (isWildcardPattern && scope) {
-      const scopePattern = scope
-        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*/g, '.*');
-      const regex = new RegExp(`^${scopePattern}$`);
-      if (!regex.test(packageJson.name)) {
-        continue;
-      }
+    // Apply global include/exclude from config.packages
+    const globalFilter = config?.packages;
+    if (globalFilter?.include?.length || globalFilter?.exclude?.length) {
+      const rel = relative(cwd, packagePath);
+      if (globalFilter.include?.length && !matchesPackagePattern(packageJson.name, rel, globalFilter.include)) {continue;}
+      if (globalFilter.exclude?.length && matchesPackagePattern(packageJson.name, rel, globalFilter.exclude)) {continue;}
     }
 
     packages.push({
@@ -185,12 +170,79 @@ async function discoverPackages(cwd: string, scope?: string, config?: ReleaseCon
 }
 
 /**
+ * Filter discovered packages by scope with clear error messages.
+ * Scope can be: exact name (@kb-labs/core), wildcard (@kb-labs/*), or path glob (packages/*).
+ * Also applies per-scope include/exclude from config.scopes[scope].
+ */
+function filterByScope(
+  packages: PackageVersion[],
+  scope: string,
+  config?: ReleaseConfig,
+): PackageVersion[] {
+  // Per-scope package overrides
+  const scopeFilter = config?.scopes?.[scope]?.packages;
+  const globalFilter = config?.packages;
+  const mergedInclude = [...(globalFilter?.include ?? []), ...(scopeFilter?.include ?? [])];
+  const mergedExclude = [...(globalFilter?.exclude ?? []), ...(scopeFilter?.exclude ?? [])];
+
+  // Build scope matcher
+  const isExactName = !scope.includes('*') && (scope.startsWith('@') || !scope.includes('/'));
+  const scopeRegex = new RegExp(
+    '^' + scope.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$'
+  );
+
+  const result: PackageVersion[] = [];
+
+  for (const pkg of packages) {
+    // Match by name or relative path depending on scope format
+    const isPathPattern = scope.includes('/') && !scope.startsWith('@');
+    const matchTarget = isPathPattern ? pkg.path : pkg.name;
+    const matches = isExactName ? pkg.name === scope : scopeRegex.test(matchTarget);
+    if (!matches) {continue;}
+
+    // Apply per-scope include/exclude on top
+    if (mergedInclude.length && !matchesPackagePattern(pkg.name, pkg.path, mergedInclude)) {continue;}
+    if (mergedExclude.length && matchesPackagePattern(pkg.name, pkg.path, mergedExclude)) {continue;}
+
+    result.push(pkg);
+  }
+
+  if (result.length === 0) {
+    // Check if the scope would have matched something if not for exclude
+    const wouldMatchExcluded = packages.some(p => {
+      const matchTarget = isPathPattern(scope) ? p.path : p.name;
+      const scopeMatches = isExactName ? p.name === scope : scopeRegex.test(matchTarget);
+      if (!scopeMatches) {return false;}
+      return mergedExclude.length > 0 && matchesPackagePattern(p.name, p.path, mergedExclude);
+    });
+
+    if (wouldMatchExcluded) {
+      throw new Error(`Scope "${scope}" matches packages that are excluded by configuration`);
+    }
+
+    const globalInclude = globalFilter?.include;
+    if (globalInclude?.length) {
+      throw new Error(`Scope "${scope}" did not match any packages. Note: packages.include restricts discovery to: ${globalInclude.join(', ')}`);
+    }
+
+    throw new Error(`Scope "${scope}" did not match any discovered packages`);
+  }
+
+  return result;
+}
+
+function isPathPattern(scope: string): boolean {
+  return scope.includes('/') && !scope.startsWith('@');
+}
+
+/**
  * Discover sub-repos as release units via .gitmodules.
  * Each sub-repo root package.json is a release unit (even if private).
  */
-async function discoverSubRepoPackages(workspaceRoot: string): Promise<PackageVersion[]> {
+async function discoverSubRepoPackages(workspaceRoot: string, config?: ReleaseConfig): Promise<PackageVersion[]> {
   const subRepoPaths = discoverSubRepoPaths(workspaceRoot);
   const packages: PackageVersion[] = [];
+  const globalFilter = config?.packages;
 
   for (const subRepoPath of subRepoPaths) {
     try {
@@ -198,6 +250,12 @@ async function discoverSubRepoPackages(workspaceRoot: string): Promise<PackageVe
         await readFile(join(subRepoPath, 'package.json'), 'utf-8')
       );
       if (!pkgJson.name) {continue;}
+
+      const rel = relative(workspaceRoot, subRepoPath);
+
+      // Apply global include/exclude
+      if (globalFilter?.include?.length && !matchesPackagePattern(pkgJson.name, rel, globalFilter.include)) {continue;}
+      if (globalFilter?.exclude?.length && matchesPackagePattern(pkgJson.name, rel, globalFilter.exclude)) {continue;}
 
       packages.push({
         name: pkgJson.name,
@@ -349,5 +407,23 @@ function detectBumpType(currentVersion: string, nextVersion: string): VersionBum
     return 'minor';
   }
   return 'patch';
+}
+
+/**
+ * Match a package against a list of patterns.
+ * - Patterns starting with '@' or without '/' → matched against package name.
+ * - Patterns containing '/' (non-scoped) → matched against relative path.
+ * - Supports '*' wildcard (single path segment, not separator).
+ */
+export function matchesPackagePattern(pkgName: string, relativePath: string, patterns: string[]): boolean {
+  for (const pattern of patterns) {
+    const isPathPattern = pattern.includes('/') && !pattern.startsWith('@');
+    const target = isPathPattern ? relativePath : pkgName;
+    const regex = new RegExp(
+      '^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$'
+    );
+    if (regex.test(target)) {return true;}
+  }
+  return false;
 }
 

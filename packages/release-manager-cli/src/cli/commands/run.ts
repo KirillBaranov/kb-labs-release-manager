@@ -23,7 +23,8 @@ import {
   generateSimpleChangelog,
   type ChangelogPackageInfo,
 } from '@kb-labs/release-manager-changelog';
-import { findRepoRoot, resolveScopePath } from '../../shared/utils';
+import { findRepoRoot } from '../../shared/utils';
+import { resolveScopePath } from '@kb-labs/release-manager-core';
 import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 
 type RunInput = {
@@ -137,7 +138,7 @@ export default defineCommand({
         skipChecks: flags['skip-checks'],
         skipBuild: flags['skip-build'],
         skipVerify: flags['skip-verify'],
-        checks: config.checks ?? [],
+        checks: config.scopes?.[flags.scope]?.checks ?? config.checks ?? [],
         publisher,
         changelog: changelogGenerator,
         logger: ctx.platform?.logger,
