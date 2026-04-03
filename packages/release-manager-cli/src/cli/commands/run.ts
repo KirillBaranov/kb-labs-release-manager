@@ -1,9 +1,11 @@
 /**
- * Release run command — thin adapter over core pipeline.
+ * Release run command — thin adapter over core runReleasePipeline().
+ * Mirror of rest/handlers/run-handler.ts for CLI context.
  */
 
 import {
   defineCommand,
+  type CLIInput,
   type CommandResult,
   type PluginContextV3,
   useLLM,
@@ -12,22 +14,18 @@ import {
 } from '@kb-labs/sdk';
 import {
   runReleasePipeline,
+  resolveScopePath,
   type ReleaseConfig,
   type ReleaseReport,
   type PublishablePackage,
   type PublishResult,
-  type ChangelogGenerator,
 } from '@kb-labs/release-manager-core';
-import {
-  generateChangelog,
-  generateSimpleChangelog,
-  type ChangelogPackageInfo,
-} from '@kb-labs/release-manager-changelog';
 import { findRepoRoot } from '../../shared/utils';
-import { resolveScopePath } from '@kb-labs/release-manager-core';
+import { createChangelogGenerator } from '../../shared/changelog-factory';
+import { publishPackagesProgrammatic } from '../../shared/publish-programmatic';
 import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
 
-type RunInput = {
+interface RunFlags {
   scope?: string;
   bump?: 'patch' | 'minor' | 'major' | 'auto';
   strict?: boolean;
@@ -36,8 +34,7 @@ type RunInput = {
   'skip-build'?: boolean;
   'skip-verify'?: boolean;
   json?: boolean;
-  argv?: string[];
-} & { flags?: any };
+}
 
 type ReleaseRunResult = CommandResult & {
   report?: ReleaseReport;
@@ -45,16 +42,15 @@ type ReleaseRunResult = CommandResult & {
 
 export default defineCommand({
   id: 'release:run',
-  description: 'Execute release process (plan, check, build, verify, publish)',
+  description: 'Execute release process (plan, check, publish)',
 
   handler: {
-    async execute(ctx: PluginContextV3, input: RunInput): Promise<ReleaseRunResult> {
-      const flags = (input as any).flags ?? input;
+    async execute(ctx: PluginContextV3, input: CLIInput<RunFlags>): Promise<ReleaseRunResult> {
+      const { flags } = input;
       const cwd = ctx.cwd || process.cwd();
       const repoRoot = await findRepoRoot(cwd);
       const dryRun = flags['dry-run'] === true;
 
-      // Load config
       const configLoader = useLoader('Loading configuration...');
       configLoader.start();
       const fileConfig = await useConfig<ReleaseConfig>();
@@ -65,64 +61,26 @@ export default defineCommand({
       };
       configLoader.succeed('Configuration loaded');
 
-      // Create changelog generator (with LLM if available)
       const llm = useLLM();
-      const changelogGenerator: ChangelogGenerator = {
-        async generate(plan, opts) {
-          const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
-          const packages: ChangelogPackageInfo[] = plan.packages.map(pkg => ({
-            name: pkg.name,
-            path: pkg.path,
-            currentVersion: pkg.currentVersion,
-            nextVersion: pkg.nextVersion,
-            bump: pkg.bump === 'auto' ? 'patch' : pkg.bump,
-          }));
+      const changelog = createChangelogGenerator(config, llm ?? undefined);
 
-          try {
-            const result = await generateChangelog({
-              repoRoot: opts.repoRoot,
-              gitCwd: opts.gitCwd,
-              packages,
-              range: { to: 'HEAD' },
-              changelog: {
-                template: config.changelog?.template ?? undefined,
-                locale,
-                metadata: config.changelog?.metadata,
-                ignoreAuthors: config.changelog?.ignoreAuthors,
-                includeTypes: config.changelog?.includeTypes as string[],
-                excludeTypes: config.changelog?.excludeTypes as string[],
-                collapseMerges: config.changelog?.collapseMerges,
-                collapseReverts: config.changelog?.collapseReverts,
-                preferMergeSummary: config.changelog?.preferMergeSummary,
-              },
-              git: {
-                autoUnshallow: config.git?.autoUnshallow,
-                requireSignedTags: config.git?.requireSignedTags,
-                baseUrl: config.git?.baseUrl ?? undefined,
-              },
-              platform: llm ? { llm } : undefined,
-            });
-            return result.markdown;
-          } catch {
-            return generateSimpleChangelog(packages, locale);
-          }
-        },
-      };
-
-      // Create publisher (interactive with OTP for CLI)
+      // Token-first publisher (same as REST), OTP fallback for interactive terminal
+      const token = process.env.NPM_TOKEN ?? process.env.NODE_AUTH_TOKEN;
       const publisher = {
         async publish(packages: PublishablePackage[], opts: { dryRun?: boolean; access?: string }): Promise<PublishResult> {
+          if (token) {
+            return publishPackagesProgrammatic({ packages, dryRun: opts.dryRun }) as any;
+          }
           return publishPackagesWithOTP({
             packages,
             dryRun: opts.dryRun,
             access: opts.access ?? 'public',
             ui: ctx.ui,
             logger: ctx.platform?.logger,
-          });
+          }) as any;
         },
       };
 
-      // Run pipeline
       const pipelineLoader = useLoader('Running release pipeline...');
       pipelineLoader.start();
 
@@ -138,16 +96,15 @@ export default defineCommand({
         skipChecks: flags['skip-checks'],
         skipBuild: flags['skip-build'],
         skipVerify: flags['skip-verify'],
-        checks: config.scopes?.[flags.scope]?.checks ?? config.checks ?? [],
+        checks: (flags.scope ? config.scopes?.[flags.scope]?.checks : undefined) ?? config.checks ?? [],
         publisher,
-        changelog: changelogGenerator,
+        changelog,
         logger: ctx.platform?.logger,
         onProgress: (_stage, message) => pipelineLoader.update({ text: message }),
       });
 
       pipelineLoader.succeed(result.success ? 'Release completed' : 'Release failed');
 
-      // Output
       if (flags.json) {
         ctx.ui?.json?.(result.report);
       } else {

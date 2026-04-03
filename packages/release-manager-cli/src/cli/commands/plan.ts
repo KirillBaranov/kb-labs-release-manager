@@ -4,6 +4,7 @@
 
 import {
   defineCommand,
+  type CLIInput,
   type CommandResult,
   type PluginContextV3,
   useLoader,
@@ -12,17 +13,14 @@ import {
   useConfig,
 } from '@kb-labs/sdk';
 import { planRelease, type VersionBump, type ReleaseConfig } from '@kb-labs/release-manager-core';
-import { findRepoRoot } from '../../shared/utils';
+import { findRepoRoot, scopeToDir } from '../../shared/utils';
 
-// Input type combining flags with backward compatibility
-type PlanInput = {
+interface PlanFlags {
   scope?: string;
-  profile?: string;
   bump?: 'patch' | 'minor' | 'major' | 'auto';
   strict?: boolean;
   json?: boolean;
-  argv?: string[];
-} & { flags?: any };
+}
 
 type ReleasePlanResult = CommandResult & {
   plan?: {
@@ -41,8 +39,8 @@ export default defineCommand({
   description: 'Analyze changes and prepare release plan',
 
   handler: {
-    async execute(ctx: PluginContextV3, input: PlanInput): Promise<ReleasePlanResult> {
-      const flags = (input as any).flags ?? input;
+    async execute(ctx: PluginContextV3, input: CLIInput<PlanFlags>): Promise<ReleasePlanResult> {
+      const { flags } = input;
       const cwd = ctx.cwd || process.cwd();
       const repoRoot = await findRepoRoot(cwd);
 
@@ -78,8 +76,9 @@ export default defineCommand({
         planLoader.succeed(`Found ${plan.packages.length} package(s) to release`);
       }
 
-      // Save plan to .kb/release/plan.json
-      const planDir = ctx.runtime.fs.join(repoRoot, '.kb', 'release');
+      // Save plan to .kb/release/plans/{scope}/current/plan.json
+      const scopeDir = scopeToDir(flags.scope ?? 'root');
+      const planDir = ctx.runtime.fs.join(repoRoot, '.kb', 'release', 'plans', scopeDir, 'current');
       const planPath = ctx.runtime.fs.join(planDir, 'plan.json');
       const artifacts: ArtifactInfo[] = [];
 

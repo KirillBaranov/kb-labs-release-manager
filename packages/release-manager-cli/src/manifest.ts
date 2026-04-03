@@ -170,6 +170,7 @@ export const manifest = {
             choices: ['public', 'restricted'] as const,
             description: 'Package access level',
           },
+          token: { type: 'string', description: 'NPM auth token (overrides NPM_TOKEN env)' },
           json: { type: 'boolean', description: 'Output in JSON format' },
         }),
 
@@ -268,29 +269,12 @@ export const manifest = {
         ],
       },
 
-      // release:preview - Preview release plan
-      {
-        id: 'release:preview',
-        group: 'release',
-        describe: 'Preview release plan without making changes',
-        longDescription: 'Show release plan with bump table and changelog preview',
-
-        handler: './cli/commands/preview.js#default',
-        handlerPath: './cli/commands/preview.js',
-
-        flags: defineCommandFlags({
-          md: { type: 'boolean', description: 'Print markdown preview' },
-        }),
-
-        examples: ['kb release preview', 'kb release preview --md'],
-      },
-
       // release:verify - Validate release readiness
       {
         id: 'release:verify',
         group: 'release',
         describe: 'Validate release readiness',
-        longDescription: 'Check if repo has substantial changes for release',
+        longDescription: 'Validate release readiness via flag gates (packages, breaking changes, commit types)',
 
         handler: './cli/commands/verify.js#default',
         handlerPath: './cli/commands/verify.js',
@@ -302,6 +286,7 @@ export const manifest = {
             type: 'string',
             description: 'Comma-separated types required (e.g., feat,fix)',
           },
+          json: { type: 'boolean', description: 'Output in JSON format' },
         }),
 
         examples: [
@@ -552,8 +537,33 @@ export const manifest = {
     ],
   },
 
+  // Studio V2 — Module Federation pages
+  studio: {
+    version: 2 as const,
+    remoteName: 'releasePlugin',
+    pages: [
+      {
+        id: 'release.overview',
+        title: 'Release',
+        icon: 'RocketOutlined',
+        route: '/p/release',
+        entry: './ReleasePage',
+        order: 1,
+      },
+    ],
+    menus: [
+      {
+        id: 'release',
+        label: 'Release',
+        icon: 'RocketOutlined',
+        target: 'release.overview',
+        order: 60,
+      },
+    ],
+  },
+
   // Studio widgets (legacy - commented out, using new UI integration)
-  // studio: {
+  // studio_legacy: {
   //   widgets: [
   //     {
   //       id: 'release.plan',

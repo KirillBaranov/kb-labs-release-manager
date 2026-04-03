@@ -1,31 +1,28 @@
 /**
- * Smart npm publish command with interactive 2FA support - V3
+ * Standalone npm publish command — thin adapter over planRelease + publish.
+ * No build/verify steps (those belong in release:run pipeline).
  *
- * Features:
- * - Interactive OTP prompt when needed
- * - Better error messages
- * - Retry logic for expired OTP
- * - Support for multiple packages
- * - Dry-run mode
+ * Token-first (programmatic), OTP fallback for interactive terminal.
  */
 
-import { defineCommand, type CommandResult, type PluginContextV3, useLoader, useConfig } from '@kb-labs/sdk';
-import { planRelease, buildPackages, verifyPackages, type ReleaseConfig } from '@kb-labs/release-manager-core';
+import { defineCommand, type CLIInput, type PluginContextV3, useLoader, useConfig } from '@kb-labs/sdk';
+import { planRelease, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
-import { publishPackagesWithOTP } from '../../shared/publish-with-otp';
+import { publishPackagesProgrammatic, type ProgrammaticPublishResult } from '../../shared/publish-programmatic';
+import { publishPackagesWithOTP, type PublishWithOTPResult } from '../../shared/publish-with-otp';
 
-// Input type combining flags with backward compatibility
-type PublishInput = {
+interface PublishFlags {
   scope?: string;
   otp?: string;
   'dry-run'?: boolean;
   tag?: string;
   access?: string;
+  token?: string;
   json?: boolean;
-  argv?: string[];
-} & { flags?: any };
+}
 
-interface PublishResult extends CommandResult {
+interface PublishResult {
+  exitCode: number;
   published?: Array<{ name: string; version: string }>;
   failed?: Array<{ name: string; version: string; error: string }>;
   summary?: {
@@ -33,41 +30,29 @@ interface PublishResult extends CommandResult {
     successful: number;
     failed: number;
   };
-  timingMs?: number;
 }
 
 export default defineCommand({
   id: 'release:publish',
-  description: 'Publish packages to npm registry with interactive OTP',
+  description: 'Publish packages to npm registry',
 
   handler: {
-    async execute(ctx: PluginContextV3, input: PublishInput): Promise<PublishResult> {
-      // Access flags via input.flags (with fallback for direct input)
-      const flags = (input as any).flags ?? input;
+    async execute(ctx: PluginContextV3, input: CLIInput<PublishFlags>): Promise<PublishResult> {
+      const { flags } = input;
       const { scope, otp: initialOtp, tag, access, json } = flags;
       const dryRun = flags['dry-run'];
-
-      if (!ctx.ui) {
-        throw new Error('UI not available');
-      }
+      const token = flags.token ?? process.env.NPM_TOKEN ?? process.env.NODE_AUTH_TOKEN;
 
       const cwd = ctx.cwd || process.cwd();
       const repoRoot = await findRepoRoot(cwd);
 
-      // Platform services with optional chaining
-      ctx.platform?.logger?.info?.('Searching for packages to publish', { scope, cwd: repoRoot });
-
-      // Load release configuration and discover packages using planRelease
+      // 1. Discover packages via planRelease
       const discoveryLoader = useLoader('Discovering packages...');
       discoveryLoader.start();
 
       const fileConfig = await useConfig<ReleaseConfig>();
       const config: ReleaseConfig = fileConfig ?? {};
-      const plan = await planRelease({
-        cwd: repoRoot,
-        config,
-        scope,
-      });
+      const plan = await planRelease({ cwd: repoRoot, config, scope });
 
       const packages = plan.packages.map(pkg => ({
         name: pkg.name,
@@ -78,62 +63,41 @@ export default defineCommand({
       discoveryLoader.succeed(`Found ${packages.length} package(s)`);
 
       if (packages.length === 0) {
-        ctx.platform?.logger?.warn?.('No packages found to publish', { scope });
+        const msg = `No packages found to publish${scope ? ` matching scope: ${scope}` : ''}`;
         if (json) {
-          ctx.ui?.json?.({ exitCode: 1, meta: { error: 'No packages found to publish' } });
+          ctx.ui?.json?.({ error: msg });
         } else {
-          ctx.ui?.write?.(`No packages found to publish${scope ? ` matching scope: ${scope}` : ''}`);
+          ctx.ui?.write?.(msg);
         }
-        return { exitCode: 1, meta: { error: 'No packages found to publish' } };
+        return { exitCode: 1, summary: { total: 0, successful: 0, failed: 0 } };
       }
 
-      // Build packages before publish (safe build — won't crash running services)
-      const buildLoader = useLoader(`Building ${packages.length} package(s)...`);
-      buildLoader.start();
-      const buildResults = await buildPackages(plan.packages, { logger: ctx.platform?.logger });
-      const buildFailed = buildResults.filter(r => !r.success);
-      if (buildFailed.length > 0) {
-        buildLoader.fail(`Build failed for ${buildFailed.map(r => r.name).join(', ')}`);
-        return { exitCode: 1, meta: { error: `Build failed: ${buildFailed[0]?.error}` } };
+      // 2. Publish — token-first (programmatic), OTP fallback for interactive terminal
+      let result: ProgrammaticPublishResult | PublishWithOTPResult;
+      if (token) {
+        result = await publishPackagesProgrammatic({
+          packages,
+          dryRun,
+          otp: initialOtp,
+          tag,
+          access: access as 'public' | 'restricted' | undefined,
+          token,
+        });
+      } else {
+        result = await publishPackagesWithOTP({
+          packages,
+          dryRun,
+          otp: initialOtp,
+          tag,
+          access: access ?? 'public',
+          ui: ctx.ui,
+          logger: ctx.platform?.logger,
+        });
       }
-      buildLoader.succeed(`Built ${buildResults.length} package(s)`);
 
-      // Verify packages (npm pack + import check)
-      const verifyLoader = useLoader('Verifying package artifacts...');
-      verifyLoader.start();
-      const verifyResults = await verifyPackages(plan.packages);
-      const verifyFailed = verifyResults.filter(r => !r.success);
-      if (verifyFailed.length > 0) {
-        verifyLoader.fail(`Verification failed`);
-        for (const f of verifyFailed) {
-          ctx.ui?.write?.(`  ${f.name}: ${f.issues.join(', ')}`);
-        }
-        return { exitCode: 1, meta: { error: `Verify failed: ${verifyFailed[0]?.issues[0]}` } };
-      }
-      verifyLoader.succeed('All packages verified');
-
-      // Publish packages with interactive OTP support
-      const result = await publishPackagesWithOTP({
-        packages,
-        dryRun,
-        otp: initialOtp,
-        tag,
-        access,
-        ui: ctx.ui,
-        logger: ctx.platform?.logger,
-      });
-
-      // Summary
+      // 3. Format output
       const successful = result.results.filter((r) => r.success).length;
       const failed = result.results.filter((r) => !r.success).length;
-      const timingMs = 0; // Timing tracking not yet implemented
-
-      // Platform services with optional chaining
-      ctx.platform?.logger?.info?.('Publish operation completed', {
-        total: result.results.length,
-        successful,
-        failed,
-      });
 
       const publishResult: PublishResult = {
         exitCode: failed === 0 ? 0 : 1,
@@ -144,7 +108,6 @@ export default defineCommand({
           error: r.error || 'Unknown error',
         })),
         summary: { total: result.results.length, successful, failed },
-        timingMs,
       };
 
       if (json) {
@@ -152,38 +115,28 @@ export default defineCommand({
         return publishResult;
       }
 
-      // Build sections for sideBox
       const sections: Array<{ header?: string; items: string[] }> = [];
 
       if (successful > 0) {
         const successItems: string[] = [];
         for (const r of result.results.filter((r) => r.success)) {
           successItems.push(`${ctx.ui.symbols.success} ${r.name}@${r.version}`);
-          // Add npm link for scoped packages
-          const npmUrl = `https://www.npmjs.com/package/${r.name}`;
-          successItems.push(`  └─ ${npmUrl}`);
+          successItems.push(`  └─ https://www.npmjs.com/package/${r.name}`);
         }
-        sections.push({
-          header: 'Successfully published',
-          items: successItems,
-        });
+        sections.push({ header: 'Published', items: successItems });
       }
 
       if (failed > 0) {
         const failItems = result.results
           .filter((r) => !r.success)
           .map((r) => `${ctx.ui.symbols.error} ${r.name}@${r.version} - ${r.error}`);
-        sections.push({
-          header: 'Failed to publish',
-          items: failItems,
-        });
+        sections.push({ header: 'Failed', items: failItems });
       }
 
-      const status = failed === 0 ? 'success' : 'error';
       ctx.ui.sideBox({
-        title: dryRun ? 'Publish Dry-Run Summary' : 'Publish Summary',
+        title: dryRun ? 'Publish Dry-Run' : 'Publish Summary',
         sections,
-        status,
+        status: failed === 0 ? 'success' : 'error',
       });
 
       return publishResult;

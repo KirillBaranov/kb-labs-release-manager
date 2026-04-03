@@ -9,18 +9,13 @@ import type {
 } from '@kb-labs/release-manager-contracts';
 import {
   runReleasePipeline,
+  resolveScopePath,
   type ReleaseConfig,
   type PublishablePackage,
   type PublishResult,
-  type ChangelogGenerator,
 } from '@kb-labs/release-manager-core';
-import {
-  generateChangelog,
-  generateSimpleChangelog,
-  type ChangelogPackageInfo,
-} from '@kb-labs/release-manager-changelog';
 import { publishPackagesProgrammatic } from '../../shared/publish-programmatic';
-import { resolveScopePath } from '@kb-labs/release-manager-core';
+import { createChangelogGenerator } from '../../shared/changelog-factory';
 
 export default defineHandler({
   async execute(ctx, input: RestInput<unknown, RunReleaseRequest>): Promise<RunReleaseResponse> {
@@ -36,46 +31,7 @@ export default defineHandler({
 
     // Changelog generator (with LLM if available)
     const llm = useLLM();
-    const changelog: ChangelogGenerator = {
-      async generate(plan, opts) {
-        const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
-        const packages: ChangelogPackageInfo[] = plan.packages.map(pkg => ({
-          name: pkg.name,
-          path: pkg.path,
-          currentVersion: pkg.currentVersion,
-          nextVersion: pkg.nextVersion,
-          bump: pkg.bump === 'auto' ? 'patch' : pkg.bump,
-        }));
-        try {
-          const result = await generateChangelog({
-            repoRoot: opts.repoRoot,
-            gitCwd: opts.gitCwd,
-            packages,
-            range: { to: 'HEAD' },
-            changelog: {
-              template: config.changelog?.template ?? undefined,
-              locale,
-              metadata: config.changelog?.metadata,
-              ignoreAuthors: config.changelog?.ignoreAuthors,
-              includeTypes: config.changelog?.includeTypes as string[],
-              excludeTypes: config.changelog?.excludeTypes as string[],
-              collapseMerges: config.changelog?.collapseMerges,
-              collapseReverts: config.changelog?.collapseReverts,
-              preferMergeSummary: config.changelog?.preferMergeSummary,
-            },
-            git: {
-              autoUnshallow: config.git?.autoUnshallow,
-              requireSignedTags: config.git?.requireSignedTags,
-              baseUrl: config.git?.baseUrl ?? undefined,
-            },
-            platform: llm ? { llm } : undefined,
-          });
-          return result.markdown;
-        } catch {
-          return generateSimpleChangelog(packages, locale);
-        }
-      },
-    };
+    const changelog = createChangelogGenerator(config, llm ?? undefined);
 
     // Programmatic publisher (token-based, no interactive OTP)
     const publisher = {

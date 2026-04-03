@@ -1,25 +1,16 @@
 /**
- * Release changelog command
- * Generate changelog from conventional commits
+ * Release changelog command — thin adapter over planRelease + createChangelogGenerator.
  */
 
 import { join } from 'node:path';
 import { stat, writeFile, mkdir, readFile } from 'node:fs/promises';
-import { defineCommand, type CommandResult, type PluginContextV3, useLLM, useLoader, displayArtifacts, type ArtifactInfo, useConfig } from '@kb-labs/sdk';
-import { type ReleaseConfig } from '@kb-labs/release-manager-core';
-import {
-  generateChangelog,
-  generateSimpleChangelog,
-  type Change,
-  type ReleaseManifest,
-  type ChangelogPackageInfo,
-} from '@kb-labs/release-manager-changelog';
-import { planRelease } from '@kb-labs/release-manager-core';
+import { defineCommand, type CLIInput, type PluginContextV3, useLLM, useLoader, displayArtifacts, type ArtifactInfo, useConfig } from '@kb-labs/sdk';
+import { planRelease, type ReleaseConfig } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
+import { createChangelogGenerator } from '../../shared/changelog-factory';
 
-type ChangelogInput = {
+interface ChangelogFlags {
   scope?: string;
-  profile?: string;
   from?: string;
   to?: string;
   'since-tag'?: string;
@@ -28,59 +19,42 @@ type ChangelogInput = {
   template?: string;
   'breaking-only'?: boolean;
   json?: boolean;
-  argv?: string[];
-} & { flags?: any };
+}
 
-type ReleaseChangelogResult = CommandResult & {
-  manifest?: ReleaseManifest;
-  changes?: Change[];
-  changesCount?: number;
+interface ReleaseChangelogResult {
+  exitCode: number;
   artifacts?: Array<{ name: string; path: string; size: number }>;
-};
+}
 
 export default defineCommand({
   id: 'release:changelog',
   description: 'Generate changelog from conventional commits',
 
   handler: {
-    async execute(ctx: PluginContextV3, input: ChangelogInput): Promise<ReleaseChangelogResult> {
-      const flags = (input as any).flags ?? input;
+    async execute(ctx: PluginContextV3, input: CLIInput<ChangelogFlags>): Promise<ReleaseChangelogResult> {
+      const { flags } = input;
       const cwd = ctx.cwd || process.cwd();
       const repoRoot = await findRepoRoot(cwd);
 
-      // Stage 1: Load configuration
+      // 1. Load config + discover packages
       const loader = useLoader('Loading configuration...');
       loader.start();
 
       const fileConfig = await useConfig<ReleaseConfig>();
       const config: ReleaseConfig = fileConfig ?? {};
 
-      // Stage 2: Discover packages
       loader.update({ text: 'Discovering packages...' });
 
-      const plan = await planRelease({
-        cwd: repoRoot,
-        config,
-        scope: flags.scope,
-      });
+      const plan = await planRelease({ cwd: repoRoot, config, scope: flags.scope });
 
       if (plan.packages.length === 0) {
         loader.fail(`No packages found matching scope: ${flags.scope || 'all'}`);
         return { exitCode: 1 };
       }
 
-      // Convert plan packages to ChangelogPackageInfo
-      const packages: ChangelogPackageInfo[] = plan.packages.map(pkg => ({
-        name: pkg.name,
-        path: pkg.path,
-        currentVersion: pkg.currentVersion,
-        nextVersion: pkg.nextVersion,
-        bump: pkg.bump === 'auto' ? 'patch' : pkg.bump,
-      }));
-
-      // Determine git working directory (for submodule support)
+      // 2. Determine git working directory (for submodule support)
       let gitCwd = repoRoot;
-      if (flags.scope && plan.packages.length > 0 && plan.packages[0]) {
+      if (flags.scope && plan.packages[0]) {
         try {
           gitCwd = await findRepoRoot(plan.packages[0].path);
         } catch {
@@ -88,68 +62,16 @@ export default defineCommand({
         }
       }
 
-      // Stage 3: Generate changelog
+      // 3. Generate changelog via shared factory
       loader.update({ text: 'Generating changelog...' });
 
       const llm = useLLM();
-      const platform = llm ? { llm } : undefined;
+      const generator = createChangelogGenerator(config, llm ?? undefined);
+      const markdown = await generator.generate(plan, { repoRoot, gitCwd, config });
+
       const format = flags.format || config.changelog?.format || 'both';
-      const level = flags.level || config.changelog?.level || 'standard';
 
-      let result;
-      try {
-        result = await generateChangelog({
-          repoRoot,
-          gitCwd,
-          packages,
-          range: {
-            from: flags.from,
-            to: flags.to,
-            sinceTag: flags['since-tag'],
-          },
-          changelog: {
-            template: flags.template || config.changelog?.template,
-            locale: config.changelog?.locale as 'en' | 'ru',
-            metadata: config.changelog?.metadata,
-            ignoreAuthors: config.changelog?.ignoreAuthors,
-            includeTypes: config.changelog?.includeTypes as string[],
-            excludeTypes: config.changelog?.excludeTypes as string[],
-            collapseMerges: config.changelog?.collapseMerges,
-            collapseReverts: config.changelog?.collapseReverts,
-            preferMergeSummary: config.changelog?.preferMergeSummary,
-          },
-          git: {
-            autoUnshallow: config.git?.autoUnshallow,
-            requireSignedTags: config.git?.requireSignedTags,
-            baseUrl: config.git?.baseUrl ?? undefined,
-          },
-          platform,
-          onProgress: (message) => loader.update({ text: message }),
-        });
-      } catch (err) {
-        loader.fail('Failed to generate changelog');
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        ctx.platform?.logger?.error?.(`Changelog generation failed: ${errorMessage}`);
-
-        // Fallback to simple changelog
-        const locale = (config.changelog?.locale as 'en' | 'ru') || 'en';
-        const markdown = generateSimpleChangelog(packages, locale);
-
-        result = {
-          markdown,
-          manifest: null,
-          changes: [],
-          range: { from: 'unknown', to: 'HEAD' },
-          packages: [],
-        };
-      }
-
-      // Filter changes if breaking-only flag is set
-      const displayChanges = flags['breaking-only']
-        ? result.changes.filter(c => c.breaking)
-        : result.changes;
-
-      // Stage 4: Save outputs
+      // 4. Save artifacts
       loader.update({ text: 'Saving artifacts...' });
 
       const outputDir = join(repoRoot, '.kb', 'release');
@@ -158,28 +80,22 @@ export default defineCommand({
       if (!flags.json) {
         await mkdir(outputDir, { recursive: true });
 
-        if (result.markdown && (format === 'md' || format === 'both')) {
+        if (markdown && (format === 'md' || format === 'both')) {
           const changelogPath = join(outputDir, 'CHANGELOG.md');
 
-          // Read existing changelog if it exists and prepend new content
-          let existingChangelog = '';
+          // Read existing and prepend new content (newest first)
+          let existing = '';
           try {
-            existingChangelog = await readFile(changelogPath, 'utf-8');
-            // Remove the footer from existing changelog if present
-            const footerStart = existingChangelog.indexOf('\n---\n\n*Generated automatically');
+            existing = await readFile(changelogPath, 'utf-8');
+            const footerStart = existing.indexOf('\n---\n\n*Generated automatically');
             if (footerStart !== -1) {
-              existingChangelog = existingChangelog.substring(0, footerStart);
+              existing = existing.substring(0, footerStart);
             }
-          } catch {
-            // File doesn't exist yet, that's fine
-          }
+          } catch { /* file doesn't exist yet */ }
 
-          // Prepend new changelog entry (newest first)
-          const combinedChangelog = existingChangelog
-            ? `${result.markdown}\n\n${existingChangelog}`
-            : result.markdown;
+          const combined = existing ? `${markdown}\n\n${existing}` : markdown;
+          await writeFile(changelogPath, combined, 'utf-8');
 
-          await writeFile(changelogPath, combinedChangelog, 'utf-8');
           const stats = await stat(changelogPath);
           artifacts.push({
             name: 'Changelog',
@@ -189,43 +105,28 @@ export default defineCommand({
             description: 'Generated changelog in Markdown format',
           });
         }
-
-        if (result.manifest && (format === 'json' || format === 'both')) {
-          const manifestPath = join(outputDir, 'release.manifest.json');
-          await writeFile(manifestPath, JSON.stringify(result.manifest, null, 2), 'utf-8');
-          const stats = await stat(manifestPath);
-          artifacts.push({
-            name: 'Manifest',
-            path: manifestPath,
-            size: stats.size,
-            modified: stats.mtime,
-            description: 'Release manifest in JSON format',
-          });
-        }
       }
 
       loader.succeed('Changelog generated successfully');
 
-      ctx.platform?.logger?.info?.('Release changelog completed', {
-        changesCount: displayChanges.length,
-        packagesCount: packages.length,
-        format,
-        level,
-      });
-
-      const formatLabel = format === 'both' ? 'Markdown + JSON' : format;
-
+      // 5. Output
       if (flags.json) {
         ctx.ui?.json?.({
-          changesCount: displayChanges.length,
-          packagesCount: packages.length,
-          range: result.range,
-          markdown: format === 'md' || format === 'both' ? result.markdown : undefined,
-          manifest: format === 'json' || format === 'both' ? result.manifest : undefined,
+          packagesCount: plan.packages.length,
+          markdown: format === 'md' || format === 'both' ? markdown : undefined,
           artifacts: artifacts.map(a => ({ name: a.name, path: a.path, size: a.size ?? 0 })),
         });
       } else {
         const sections: Array<{ header?: string; items: string[] }> = [];
+
+        sections.push({
+          header: 'Summary',
+          items: [
+            `Packages: ${plan.packages.map(p => p.name).join(', ')}`,
+            `Format: ${format === 'both' ? 'Markdown + JSON' : format}`,
+          ],
+        });
+
         if (artifacts.length > 0) {
           const artifactsLines = displayArtifacts(artifacts, {
             showSize: true,
@@ -234,33 +135,18 @@ export default defineCommand({
             maxItems: 10,
             title: '',
           });
-          sections.push({
-            header: 'Artifacts',
-            items: artifactsLines,
-          });
+          sections.push({ header: 'Artifacts', items: artifactsLines });
         }
 
         ctx.ui.sideBox({
           title: 'Changelog Generated',
-          sections: [
-            {
-              header: 'Summary',
-              items: [
-                `Packages: ${packages.map(p => p.name).join(', ')}`,
-                `Range: ${result.range.from.substring(0, 7)}..${result.range.to.substring(0, 7)}`,
-                `Commits: ${displayChanges.length}`,
-                `Format: ${formatLabel}`,
-              ],
-            },
-            ...sections,
-          ],
+          sections,
           status: 'success',
         });
       }
 
       return {
         exitCode: 0,
-        changesCount: displayChanges.length,
         artifacts: artifacts.map(a => ({ name: a.name, path: a.path, size: a.size ?? 0 })),
       };
     },

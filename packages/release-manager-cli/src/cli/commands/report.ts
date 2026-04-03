@@ -4,15 +4,13 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineCommand, type CommandResult, type PluginContextV3 } from '@kb-labs/sdk';
+import { defineCommand, type CLIInput, type CommandResult, type PluginContextV3 } from '@kb-labs/sdk';
 import type { ReleaseReport } from '@kb-labs/release-manager-core';
 import { findRepoRoot } from '../../shared/utils';
 
-// Input type combining flags with backward compatibility
-type ReportInput = {
+interface ReportFlags {
   json?: boolean;
-  argv?: string[];
-} & { flags?: any };
+}
 
 type ReleaseReportResult = CommandResult & {
   report?: ReleaseReport;
@@ -23,9 +21,8 @@ export default defineCommand({
   description: 'Show last release report',
 
   handler: {
-    async execute(ctx: PluginContextV3, input: ReportInput): Promise<ReleaseReportResult> {
-      // Access flags via input.flags (with fallback for direct input)
-      const flags = (input as any).flags ?? input;
+    async execute(ctx: PluginContextV3, input: CLIInput<ReportFlags>): Promise<ReleaseReportResult> {
+      const { flags } = input;
       const cwd = ctx.cwd || process.cwd();
       const repoRoot = await findRepoRoot(cwd);
 
