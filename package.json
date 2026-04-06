@@ -1,6 +1,6 @@
 {
   "name": "@kb-labs/release-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "KB Labs Release Manager — unified release orchestration for monorepo packages. Combines audit, devlink, mind checks with version management and publishing.",
   "type": "module",
   "author": {
