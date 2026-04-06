@@ -1,3 +1,6 @@
+## [0.4.0] - 2026-04-06
+
+> **@kb-labs/release-manager** 0.3.0 → 0.4.0 (manual)
 ## [0.3.0] - 2026-04-06
 
 > **@kb-labs/release-manager** 0.2.0 → 0.3.0 (manual)
