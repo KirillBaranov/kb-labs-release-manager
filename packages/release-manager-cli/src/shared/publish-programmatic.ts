@@ -12,6 +12,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { useLogger } from '@kb-labs/sdk';
 
 export interface PackageToPublish {
@@ -154,10 +156,83 @@ export async function publishPackagesProgrammatic(
 
   const results: PublishResult[] = [];
 
+  // Build version map from all packages in this release for link: → ^version replacement
+  const versionMap = new Map(packages.map(p => [p.name, p.version]));
+
   for (const pkg of packages) {
     logger.info(`Publishing ${pkg.name}@${pkg.version}`, { path: pkg.path, dryRun });
 
+    // Replace link: deps with real versions before publish, restore after
+    const pkgJsonPath = join(pkg.path, 'package.json');
+    const originalPkgJson = readFileSync(pkgJsonPath, 'utf-8');
+    let restored = false;
+
     try {
+      const pkgJson = JSON.parse(originalPkgJson);
+      let modified = false;
+
+      for (const section of ['dependencies', 'peerDependencies'] as const) {
+        const deps = pkgJson[section];
+        if (!deps) continue;
+        for (const [depName, depValue] of Object.entries(deps)) {
+          if (typeof depValue !== 'string') continue;
+          const val = depValue as string;
+
+          if (val.startsWith('link:')) {
+            // Cross-repo link: → ^version from plan or linked package.json
+            const planVersion = versionMap.get(depName);
+            if (planVersion) {
+              deps[depName] = `^${planVersion}`;
+              modified = true;
+            } else {
+              try {
+                const linkPath = val.replace('link:', '');
+                const linkedPkg = JSON.parse(readFileSync(join(pkg.path, linkPath, 'package.json'), 'utf-8'));
+                deps[depName] = `^${linkedPkg.version}`;
+                modified = true;
+              } catch {
+                deps[depName] = '*';
+                modified = true;
+              }
+            }
+          } else if (val.startsWith('workspace:')) {
+            // Intra-repo workspace:* → ^version (pnpm does this automatically, but npm doesn't)
+            const planVersion = versionMap.get(depName);
+            if (planVersion) {
+              deps[depName] = val === 'workspace:*' ? `^${planVersion}` : val.replace('workspace:', '');
+              modified = true;
+            } else {
+              // Not in plan — resolve from current version in monorepo
+              try {
+                // Find the package in the same repo by scanning packages/*/package.json
+                const repoRoot = join(pkg.path, '..');
+                const candidates = readdirSync(repoRoot, { withFileTypes: true })
+                  .filter(d => d.isDirectory())
+                  .map(d => join(repoRoot, d.name, 'package.json'));
+                for (const candidate of candidates) {
+                  try {
+                    const cPkg = JSON.parse(readFileSync(candidate, 'utf-8'));
+                    if (cPkg.name === depName) {
+                      deps[depName] = `^${cPkg.version}`;
+                      modified = true;
+                      break;
+                    }
+                  } catch { /* skip */ }
+                }
+              } catch {
+                deps[depName] = '*';
+                modified = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
+        logger.info(`Replaced link: deps for ${pkg.name}`);
+      }
+
       await publishSinglePackage({
         packagePath: pkg.path,
         token,
@@ -181,6 +256,12 @@ export async function publishPackagesProgrammatic(
         success: false,
         error: message,
       });
+    } finally {
+      // Always restore original package.json
+      if (!restored) {
+        writeFileSync(pkgJsonPath, originalPkgJson);
+        restored = true;
+      }
     }
   }
 
