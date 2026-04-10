@@ -173,9 +173,9 @@ export async function publishPackagesProgrammatic(
 
       for (const section of ['dependencies', 'peerDependencies'] as const) {
         const deps = pkgJson[section];
-        if (!deps) continue;
+        if (!deps) {continue;}
         for (const [depName, depValue] of Object.entries(deps)) {
-          if (typeof depValue !== 'string') continue;
+          if (typeof depValue !== 'string') {continue;}
           const val = depValue as string;
 
           if (val.startsWith('link:')) {
